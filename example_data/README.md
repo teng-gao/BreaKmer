@@ -1,24 +1,23 @@
-BreaKmer example data README
+## BreaKmer example data
+Note that these instructions are currently out of date with the latest version of BreaKmer.
 -------
 
 To get started in running the example data, first make sure all the BreaKmer software dependencies are installed and running properly on your system. 
 
 The follow files have been provided in the example_data directory to run the example data:
-B2M.bam - sorted BAM file containing aligned reads to B2M.
-B2M.bam.bai - index of B2M.bam file.
-breakmer.cfg - BreaKmer config file.
-cutadapt.cfg- Cutadapt configuration file containing the Illumina adapters to trim from sequences.
-genes.bed - BED file specifying coordinates for B2M tiled regions.
-ref_seq/B2M - all the extracted B2M reference sequences and associated kmer files.
+  * B2M.bam - sorted BAM file containing aligned reads to B2M.
+  * B2M.bam.bai - index of B2M.bam file.
+  * breakmer.cfg - BreaKmer config file.
+  * cutadapt.cfg- Cutadapt configuration file containing the Illumina adapters to trim from sequences.
+  * genes.bed - BED file specifying coordinates for B2M tiled regions.
+  * ref_seq/B2M - all the extracted B2M reference sequences and associated kmer files.
 
 The following files have been provided in the BreaKmer directory (one level up from example_data directory) to run the example data:
-<path to BreaKmer directory>/bin/cutadapt-1.5.tar.gz - uncompress and use binary in bin directory
-<path to BreaKmer directory>/bin/jellyfish-1.1.11.tar.gz - uncompress and follow installation instructions, binary should be in the bin directory after successfull install
-<path to BreaKmer directory>/bin/blat - blat binary for linux x86 64bit
-<path to BreaKmer directory>/bin/gfClient - blat server binary for linux x86 64bit
-<path to BreaKmer directory>/bin/gfServer - blat server binary for linux x86 64bit
-<path to BreaKmer directory>/ref/ucsc_hg19_refgene.txt
-<path to BreaKmer directory>/ref/ucsc_hg19_rmsk.bed
+  * <path to BreaKmer directory>/bin/cutadapt-1.5.tar.gz - uncompress and use binary in bin directory
+  * <path to BreaKmer directory>/bin/jellyfish-1.1.11.tar.gz - uncompress and follow installation instructions, binary should be in the bin directory after successfull install
+  * <path to BreaKmer directory>/bin/blat - blat binary for linux x86 64bit
+  * <path to BreaKmer directory>/bin/gfClient - blat server binary for linux x86 64bit
+  * <path to BreaKmer directory>/bin/gfServer - blat server binary for linux x86 64bit
 
 To analyze the example data follow these steps:
 
@@ -46,8 +45,6 @@ gfclient=<path to BreaKmer directory>/bin/gfClient
 gfserver=<path to BreaKmer directory>/bin/gfServer
 fatotwobit=<path to BreaKmer directory>/bin/faToTwoBit
 reference_fasta=<path to BreaKmer directory>/ref/<GENOME FASTA FILE>
-gene_annotation_file=<path to BreaKmer directory>/ref/ucsc_hg19_refgene.txt
-repeat_mask_file=<path to BreaKmer directory>/ref/ucsc_hg19_rmsk.bed
 kmer_size=15 
 
 2. Run BreaKmer
