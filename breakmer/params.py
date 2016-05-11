@@ -65,6 +65,9 @@ class ParamManager(object):
         # Log the parameter setup after the logging object is created.
         utils.log(self.logging_name, 'info', 'Setting up parameters')
 
+        # Setup the logger first before checking required params - log if there is a missing parameter.
+        self.check_required_params()
+
         # Log all parameters passed in, warn for poor paths
         for param_key, param_value in self.opts.items():
             utils.log(self.logging_name, 'info', '%s = %s' % (param_key, param_value))
@@ -100,6 +103,7 @@ class ParamManager(object):
         # self.set_insertsize_thresh()  # Set the expected insert size threshold from the properly mapped read
 
     def parse_opts(self):
+
         """Formats input parameters into self.opts dictionary. It first parses the configuration file and stores the key, values in the self.opts dictionary.
 
         It will exit with an error if the configuration file does not have lines in the proper format (i.e., key=value).
@@ -137,6 +141,17 @@ class ParamManager(object):
                 log_msgs.append(('info', 'Parameter %s is None in input parameters and set in configuration file. Using configuration file value %s for analysis.' % (opt, self.get_param(opt))))
             else:
                 self.set_param(opt, vars(self.input_args)[opt])
+        return log_msgs
+
+    def check_required_params(self):
+
+        '''Iterate over the required parameter values and check if they exist.
+
+        Args:
+            None
+        Returns:
+            None
+        '''
 
         # Check that the required parameters are set.
         required = ['analysis_name',
@@ -152,10 +167,6 @@ class ParamManager(object):
 
         for req in required:
             self.get_param(req, True)
-
-	print 'Hello'
-        # Return log messages that need to be back logged once the logger is setup
-        return log_msgs
 
     def set_targets(self):
 
