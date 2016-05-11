@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
     - Adding parameter requirement checks while initializing the parameter object.
     - Adding functional run mode options - prepare_reference_data, run, start_blat_server.
     - Removing support for alternative reference sequences.
+    - Added a bin directory containing cutadapt v1.9.1, jellyfish v1.1.11, blat, gfClient, gfServer
 
 ## [0.0.4-beta] - 2016-05-10
     - Changed from OptParser to argparser
