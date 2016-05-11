@@ -72,12 +72,13 @@ class target(object):
         self.add_path('output', os.path.join(self.params.paths['output'], self.name))
 
         # Set reference paths
-        if not self.params.opts['keep_repeat_regions']: 
-            if 'repeat_mask_file' not in self.params.opts:
-                self.logger.error('Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
-                self.params.opts['keep_repeat_regions'] = True
-            else:
-                self.files['rep_mask_fn'] = os.path.join(self.paths['ref_data'], self.name+'_rep_mask.bed')
+	if 'keep_repeat_regions' in self.params.opts:
+	    if not self.params.opts['keep_repeat_regions']: 
+                if 'repeat_mask_file' not in self.params.opts:
+                    self.logger.error('Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
+                    self.params.opts['keep_repeat_regions'] = True
+                else:
+                    self.files['rep_mask_fn'] = os.path.join(self.paths['ref_data'], self.name+'_rep_mask.bed')
 
         self.files['target_ref_fn'] = [os.path.join(self.paths['ref_data'], self.name+'_forward_refseq.fa'), os.path.join(self.paths['ref_data'], self.name+'_reverse_refseq.fa')]
 
