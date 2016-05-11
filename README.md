@@ -3,6 +3,7 @@ BreaKmer
 
 A method to identify genomic structural variation in target regions/genes from reference-aligned high-throughput sequence data. It uses a “kmer” strategy to assemble misaligned sequence reads for predicting insertions, deletions, inversions, tandem duplications, and translocations at base-pair resolution.
 
+<<<<<<< HEAD
 Installation
 ----------
 
@@ -240,3 +241,7 @@ Output files and formats
        - contig_id - Contig ID
        - contig_seq - Contig sequence. 
   - Each target gene in which a SV was detected has a separate output directory (\<analysis\_dir\>/output/\<target\_name\>) containing formatted output specific to the target and the related reference-aligned sequence reads for the contigs that contain the structural variants detected in BAM format.
+=======
+Documentation:
+http://ryanabo.github.io/BreaKmer
+>>>>>>> 2ea81b24aaac6cfd87e381751775d7c3afb13b9e
