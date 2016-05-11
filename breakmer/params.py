@@ -160,8 +160,8 @@ class ParamManager(object):
                     'analysis_dir',
                     'reference_data_dir',
                     'cutadapt_config_file',
-                    'reference_fasta',
-                    'gene_annotation_file']
+                    'reference_fasta']
+#                    'gene_annotation_file']
         if self.fnc_cmd == 'prepare_reference_data':
             required = ['reference_data_dir', 'reference_fasta', 'targets_bed_file']
 
