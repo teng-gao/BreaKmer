@@ -6,7 +6,7 @@ A method to identify genomic structural variation in target regions/genes from r
 News
 ====
 
-### May 10, 2016
+## May 10, 2016
 Due to issues in the latest release of BreaKmer, I am taking a step back and reverting to the original "stable" version (v0.0.3) to redevelop new features in a more robust manner. I will aim to document the regular progress and changes as I go and attempt to address the numerous bugs that have come about in the past year. Please submit any feature requests, questions, or comments on this page and I will do my best to address it. If I don't know about an issue, I can't fix it. For those using the development version (old master), you can find that code in the beta_version branch.
 
 Documentation
