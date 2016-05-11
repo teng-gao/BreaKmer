@@ -2,7 +2,7 @@
 
 import sys
 import os
-from utils import *
+from breakmer.utils import *
 from sv_assembly import *
 from sv_caller import *
 import math

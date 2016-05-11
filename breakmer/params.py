@@ -152,6 +152,8 @@ class ParamManager(object):
 
         for req in required:
             self.get_param(req, True)
+
+	print 'Hello'
         # Return log messages that need to be back logged once the logger is setup
         return log_msgs
 
@@ -231,12 +233,9 @@ class ParamManager(object):
         value = None
         if key in self.opts:
             value = self.opts[key]
-            if value == '':
-                value = None
-        if required and value is None:
+        elif required:
             utils.log(self.logging_name, 'error', 'Missing required parameter %s, exiting.' % key)
             sys.exit(1)
-        sys.stderr.write('Warning: %s is set to None\n' % key)
         return value
 
     def set_param(self, key, value):
