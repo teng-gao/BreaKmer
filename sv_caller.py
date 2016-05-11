@@ -3,7 +3,7 @@
 import sys
 import os
 import math
-from utils import *
+from breakmer.utils import *
 from sv_processor import *
 from optparse import OptionParser
 
