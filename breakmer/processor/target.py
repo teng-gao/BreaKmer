@@ -13,6 +13,42 @@ __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
 
 
+def process_reads(areads, read_d, bamfile):
+
+    '''
+    '''
+
+    pair_indices = {}
+    valid_reads = []
+
+    for aread in areads:
+        skip = False
+        if aread.mate_is_unmapped or aread.rnext == -1: # Indicate that mate is unmapped
+            aread.mate_is_unmapped = True
+        if aread.is_duplicate or aread.is_qcfail: # Skip duplicates and failures
+            skip = True
+        if aread.is_unmapped: # Store unmapped reads
+            read_d['unmapped'][aread.qname] = aread
+            skip = True
+
+        # If read is unmapped or duplicate or qcfail, then don't store
+        if not skip:
+            proper_map = False
+            overlap_reads = False
+            # These two functions can opeate on the first read of the pair.
+            # Check if fragment hasn't been checked yet and that the mate is mapped.
+            if aread.qname not in pair_indices and not aread.mate_is_unmapped:
+                add_discordant_pe(aread, read_d, bamfile)
+                proper_map, overlap_reads = pe_meta(aread)
+            valid_reads.append((aread, proper_map, overlap_reads))
+
+            if aread.qname not in pair_indices and not aread.mate_is_unmapped:
+                pair_indices[aread.qname] = {}
+            if aread.qname in pair_indices:
+                pair_indices[aread.qname][int(aread.is_read1)] = len(valid_reads)-1
+    return pair_indices, valid_reads
+
+
 class target(object):
 
     '''
@@ -86,189 +122,32 @@ class target(object):
         ref_fa_marker_f.write(self.params.opts['reference_fasta'])
         ref_fa_marker_f.close()
 
-        # if 'alternate_reference_fastas' in self.params.opts:
-        #     alt_ref_fa_marker_f = open(os.path.join(self.paths['ref_data'], '.alternate_reference_fastas'), 'w')
-        #     self.files['target_altref_fn'] = []
-        #     alt_iter = 1
-        #     for altref in self.params.opts['alternate_reference_fastas']:
-        #         self.files['target_altref_fn'].append([os.path.join(self.paths['ref_data'], self.name + '_forward_altrefseq_' + str(alt_iter) + '.fa'), os.path.join(self.paths['ref_data'], self.name + '_reverse_altrefseq_' + str(alt_iter) + '.fa')])
-        #         alt_iter += 1
-        #         alt_ref_fa_marker_f.write(altref +'\n')
-        # alt_ref_fa_marker_f.close()
-
         self.files['ref_kmer_dump_fn'] = [os.path.join(self.paths['ref_data'], self.name+'_forward_refseq.fa_dump'), os.path.join(self.paths['ref_data'], self.name+'_reverse_refseq.fa_dump')]
-
-    def get_values(self):
-        return (self.chrom, self.start, self.end, self.name, self.target_intervals)
-
-    def rm_output_dir(self):
-        shutil.rmtree(self.paths['output'])
-
-    def has_results(self):
-        if len(self.results) > 0:
-            return True
-        else:
-            return False
-
-    def add_path(self,key,path):
-        self.logger.info('Creating %s %s path (%s)' % (self.name,key,path))
-        self.paths[key] = path
-        if not os.path.exists(self.paths[key]):
-            os.makedirs(self.paths[key])
-
-    def setup_rmask(self,marker_fn):
-        # Iterate through genes in target list and find repeats in those genes.
-        self.repeat_mask = [] 
-        if not os.path.isfile(marker_fn):
-          out_fn = self.files['rep_mask_fn']
-          fout = open(out_fn,'w')
-          f = open(self.params.opts['repeat_mask_file'],'rU')
-          flines = f.readlines()
-          for line in flines:
-            line = line.strip()
-            rchr,rbp1,rbp2,rname = line.split("\t")[0:4]
-            rchr = rchr.replace('chr','')
-            if rchr == self.chrom:
-              if int(rbp1) >= self.start and int(rbp2) <= self.end: 
-                fout.write("\t".join([str(x) for x in [rchr,int(rbp1),int(rbp2),rname]])+"\n")
-                self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
-          f.close()
-          fout.close()
-          cmd = 'touch %s'%marker_fn
-          p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-          output, errors = p.communicate()  
-          self.logger.info('Completed writing repeat mask file %s, touching marker file %s'%(out_fn,marker_fn))
-        else:
-          rep_f = open(self.files['rep_mask_fn'],'rU')
-          rep_flines = rep_f.readlines()
-          for line in rep_flines:
-            line = line.strip()
-            rchr,rbp1,rbp2,rname = line.split()
-            self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
-          rep_f.close()
-
-    def set_ref_data(self):
-        # Write rmask bed file if needed.
-        if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts: 
-          self.logger.info('Extracting repeat mask regions for target gene %s.'%self.name)
-          self.repeat_mask = setup_rmask(self.get_values(), self.paths['ref_data'], self.params.opts['repeat_mask_file'])
-         
-        # Write reference fasta file if needed.
-        for i in range(len(self.files['target_ref_fn'])):
-          fn = self.files['target_ref_fn'][i]
-          direction = "forward"
-          if fn.find("forward") == -1: direction = "reverse"
-          self.logger.info('Extracting refseq sequence and writing %s'%fn)
-          extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.opts['reference_fasta'], direction, fn)
-
-        # Write alternate reference files.
-        if 'target_altref_fn' in self.files:
-          if not create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")):
-            return
-
-          altref_fns = []
-          alt_iter = 1
-          for i in range(len(self.files['target_altref_fn'])):
-            for j in range(len(self.files['target_altref_fn'][i])):
-               fn = self.files['target_altref_fn'][i][j]
-               marker_fn = get_marker_fn(fn) 
-               if not os.path.isfile(marker_fn):
-                 altref_fns.append((self.params.opts['alternate_reference_fastas'][i], fn, alt_iter))
-            alt_iter += 1
-          if len(altref_fns) > 0:
-            create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"))
-            for i in range(len(altref_fns)): #range(len(self.files['target_altref_fn'])):
-              alt_gene_coords = get_altref_genecoords(self.params.opts['blat'], altref_fns[i][0], os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"), self.chrom, os.path.join(self.paths['ref_data'], self.name + '_altref_blat_' + str(altref_fns[i][2]) + '.psl'))
-              if not alt_gene_coords[2]:
-                self.logger.info("No sequence for target gene in %s, no reference kmers extracted."%altref_fns[i][0])
-                continue
-              gene_vals = (self.chrom, alt_gene_coords[0][1], alt_gene_coords[1][1], self.name, self.target_intervals)
-              fn = altref_fns[i][1] #self.files['target_altref_fn'][i][j]
-              direction = "forward"
-              if fn.find("forward") == -1: direction = "reverse"
-              self.logger.info('Extracting alternate refseq sequence and writing %s'%fn)
-              extract_refseq_fa(gene_vals, self.paths['ref_data'], altref_fns[i][0], direction, fn)
-            # Clean up BLAT files!
-    #        os.remove(os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")) 
-
-    def add_discordant_pe(self, aread, read_d, bamfile):
-        qname = aread.qname
-        # Keep discordant read pairs
-        if aread.mapq > 0 and ((aread.rnext!=-1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
-          mate_refid = bamfile.getrname(aread.rnext)
-          mate_read = bamfile.mate(aread)
-          if mate_read.mapq > 0: 
-            if mate_refid not in read_d['disc']: read_d['disc'][mate_refid] = []
-            read_d['disc'][mate_refid].append((aread.pos, aread.pnext))
-         
-        if aread.mapq > 0 and not aread.mate_is_unmapped and aread.tid == aread.mrnm:
-          if aread.is_read1:
-            read_positions = None
-            if aread.is_reverse and aread.mate_is_reverse:
-              # reverse -- reverse, samflag 115 (note: only considering read1, read2 samflag 179)
-              read_positions = (aread.pos, aread.mpos, 0, 0, qname)
-              if aread.mpos < aread.pos: read_positions = (aread.mpos, aread.pos, 0, 0, qname)
-              read_d['inv_reads'].append(read_positions)
-            elif not aread.is_reverse and not aread.mate_is_reverse:
-              # forward -- forward = samflag 67 (note: only considering read1, read2 samflag 131)
-              read_positions = (aread.pos, aread.mpos, 1, 1, qname) 
-              if aread.mpos < aread.pos: read_positions = (aread.mpos, aread.pos, 1, 1, qname)
-              read_d['inv_reads'].append(read_positions)
-            elif aread.is_reverse and not aread.mate_is_reverse and aread.pos < aread.mpos:
-              # reverse -- forward = samflag 83 with positive insert (read2 samflag 163 with + insert size)
-              read_positions = (aread.pos, aread.mpos, 0, 1, aread.qname)
-              read_d['td_reads'].append(read_positions)
-            elif not aread.is_reverse and aread.mate_is_reverse and aread.mpos < aread.pos:
-              # reverse -- forward = samflag 99 with - insert (read2 samflag 147 with - insert)
-              read_positions = (aread.mpos, aread.pos, 1, 0, qname)
-              read_d['td_reads'].append(read_positions)
-            if read_positions: read_d['other'].append(read_positions)
-
-    def pe_meta(self, aread):
-        # First check if read is from a proper paired-end mapping --> <--    
-        proper_map = False
-        overlap_reads = False
-        if ( ((aread.flag==83) or (aread.flag==147)) and (aread.isize<0) ) or (((aread.flag==99) or (aread.flag==163)) and (aread.isize>0)):
-          proper_map = True
-          if abs(aread.isize) < 2*len(aread.seq):
-            overlap_reads = True   
-        return proper_map, overlap_reads
-
-    def get_sv_reads(self):
-        self.extract_bam_reads('sv')
-        if 'normal_bam_file' in self.params.opts:
-          self.extract_bam_reads('norm')
-          self.clean_reads('norm')
-        
-        check = True
-        if not self.clean_reads('sv'):
-          self.rm_output_dir()
-          check = False
-        return check
-
-    def setup_read_extraction_files(self, type):
-        self.files['%s_fq'%type] = os.path.join(self.paths['data'],self.name + "_sv_reads.fastq")
-        self.files['%s_sc_unmapped_fa'%type] = os.path.join(self.paths['data'],self.name + "_sv_sc_seqs.fa")
-        if type == 'sv':
-          self.files['sv_bam'] = os.path.join(self.paths['data'],self.name + "_sv_reads.bam")
-          self.files['sv_bam_sorted'] = os.path.join(self.paths['data'],self.name + "_sv_reads.sorted.bam")
 
     def extract_bam_reads(self, type):
         self.setup_read_extraction_files(type)
-       
+
         bam_type = 'sample'
-        if type == 'norm': bam_type = 'normal'
+        if type == 'norm':
+            bam_type = 'normal'
 
-        self.logger.info('Extracting bam reads from %s to %s'%(self.params.opts['%s_bam_file'%bam_type],self.files['sv_fq']))
+        utils.log(self.logging_name, 'info', 'Extracting bam reads from %s to %s'%(self.params.opts['%s_bam_file' % bam_type], self.files['sv_fq']))
         
-        bamfile = Samfile(self.params.opts['%s_bam_file'%bam_type],'rb')
-        if type == 'sv': sv_bam = Samfile(self.files['sv_bam'], "wb", template=bamfile)
+        bamfile = pysam.Samfile(self.params.opts['%s_bam_file' % bam_type], 'rb')
+        if type == 'sv':
+            sv_bam = pysam.Samfile(self.files['sv_bam'], 'wb', template=bamfile)
 
-        read_d = {'unmapped':{}, 'disc':{}, 'sv':{}, 'unmapped_keep':[], 'inv_reads':[], 'td_reads':[], 'other':[]}
-        self.logger.debug('Fetching bam file reads from %s, %s %d %d'%(self.params.opts['%s_bam_file'%bam_type],self.chrom, self.start-200, self.end+200))
-        areads = bamfile.fetch(self.chrom, self.start-200, self.end+200)
-        kmer_size = self.params.get_kmer_size()
-
+        read_d = {'unmapped':{},
+                  'disc':{},
+                  'sv':{},
+                  'unmapped_keep':[],
+                  'inv_reads':[],
+                  'td_reads':[],
+                  'other':[]
+                }
+        utils.log(self.logging_name, 'debug', 'Fetching bam file reads from %s, %s %d %d' % (self.params.opts['%s_bam_file' % bam_type], self.chrom, self.start - 200, self.end + 200))
+        areads = bamfile.fetch(self.chrom, self.start - 200, self.end + 200)
+        kmer_size = int(self.params.get_param('kmer_size'))
         pair_indices, valid_reads = process_reads(areads, read_d, bamfile)
 
         for aread, proper_map, overlap_reads in valid_reads:
@@ -380,6 +259,177 @@ class target(object):
           sort(self.files['sv_bam'],self.files['sv_bam_sorted'].replace('.bam',''))
           self.logger.info('Indexing sorted bam file %s'%self.files['sv_bam_sorted'])
           index(self.files['sv_bam_sorted'])
+
+    def get_values(self):
+        return (self.chrom, self.start, self.end, self.name, self.target_intervals)
+
+    def rm_output_dir(self):
+        shutil.rmtree(self.paths['output'])
+
+    def has_results(self):
+
+        '''
+        '''
+
+        if len(self.results) > 0:
+            return True
+        else:
+            return False
+
+    def add_path(self,key,path):
+
+        '''
+        '''
+
+        self.logger.info('Creating %s %s path (%s)' % (self.name, key, path))
+        self.paths[key] = path
+        if not os.path.exists(self.paths[key]):
+            os.makedirs(self.paths[key])
+
+    def setup_rmask(self,marker_fn):
+
+        '''
+        '''
+
+        # Iterate through genes in target list and find repeats in those genes.
+        self.repeat_mask = [] 
+        if not os.path.isfile(marker_fn):
+          out_fn = self.files['rep_mask_fn']
+          fout = open(out_fn,'w')
+          f = open(self.params.opts['repeat_mask_file'],'rU')
+          flines = f.readlines()
+          for line in flines:
+            line = line.strip()
+            rchr,rbp1,rbp2,rname = line.split("\t")[0:4]
+            rchr = rchr.replace('chr','')
+            if rchr == self.chrom:
+              if int(rbp1) >= self.start and int(rbp2) <= self.end: 
+                fout.write("\t".join([str(x) for x in [rchr,int(rbp1),int(rbp2),rname]])+"\n")
+                self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
+          f.close()
+          fout.close()
+          cmd = 'touch %s'%marker_fn
+          p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
+          output, errors = p.communicate()  
+          self.logger.info('Completed writing repeat mask file %s, touching marker file %s'%(out_fn,marker_fn))
+        else:
+          rep_f = open(self.files['rep_mask_fn'],'rU')
+          rep_flines = rep_f.readlines()
+          for line in rep_flines:
+            line = line.strip()
+            rchr,rbp1,rbp2,rname = line.split()
+            self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
+          rep_f.close()
+
+    def set_ref_data(self):
+
+        '''
+        '''
+
+        # Write rmask bed file if needed.
+        if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts: 
+          self.logger.info('Extracting repeat mask regions for target gene %s.' % self.name)
+          self.repeat_mask = setup_rmask(self.get_values(), self.paths['ref_data'], self.params.opts['repeat_mask_file'])
+         
+        # Write reference fasta file if needed.
+        for i in range(len(self.files['target_ref_fn'])):
+          fn = self.files['target_ref_fn'][i]
+          direction = "forward"
+          if fn.find("forward") == -1: direction = "reverse"
+          self.logger.info('Extracting refseq sequence and writing %s'%fn)
+          extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.opts['reference_fasta'], direction, fn)
+
+        # Write alternate reference files.
+        if 'target_altref_fn' in self.files:
+          if not create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")):
+            return
+
+          altref_fns = []
+          alt_iter = 1
+          for i in range(len(self.files['target_altref_fn'])):
+            for j in range(len(self.files['target_altref_fn'][i])):
+               fn = self.files['target_altref_fn'][i][j]
+               marker_fn = get_marker_fn(fn) 
+               if not os.path.isfile(marker_fn):
+                 altref_fns.append((self.params.opts['alternate_reference_fastas'][i], fn, alt_iter))
+            alt_iter += 1
+          if len(altref_fns) > 0:
+            create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"))
+            for i in range(len(altref_fns)): #range(len(self.files['target_altref_fn'])):
+              alt_gene_coords = get_altref_genecoords(self.params.opts['blat'], altref_fns[i][0], os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"), self.chrom, os.path.join(self.paths['ref_data'], self.name + '_altref_blat_' + str(altref_fns[i][2]) + '.psl'))
+              if not alt_gene_coords[2]:
+                self.logger.info("No sequence for target gene in %s, no reference kmers extracted."%altref_fns[i][0])
+                continue
+              gene_vals = (self.chrom, alt_gene_coords[0][1], alt_gene_coords[1][1], self.name, self.target_intervals)
+              fn = altref_fns[i][1] #self.files['target_altref_fn'][i][j]
+              direction = "forward"
+              if fn.find("forward") == -1: direction = "reverse"
+              self.logger.info('Extracting alternate refseq sequence and writing %s'%fn)
+              extract_refseq_fa(gene_vals, self.paths['ref_data'], altref_fns[i][0], direction, fn)
+            # Clean up BLAT files!
+    #        os.remove(os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")) 
+
+    def add_discordant_pe(self, aread, read_d, bamfile):
+        qname = aread.qname
+        # Keep discordant read pairs
+        if aread.mapq > 0 and ((aread.rnext!=-1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
+          mate_refid = bamfile.getrname(aread.rnext)
+          mate_read = bamfile.mate(aread)
+          if mate_read.mapq > 0: 
+            if mate_refid not in read_d['disc']: read_d['disc'][mate_refid] = []
+            read_d['disc'][mate_refid].append((aread.pos, aread.pnext))
+         
+        if aread.mapq > 0 and not aread.mate_is_unmapped and aread.tid == aread.mrnm:
+          if aread.is_read1:
+            read_positions = None
+            if aread.is_reverse and aread.mate_is_reverse:
+              # reverse -- reverse, samflag 115 (note: only considering read1, read2 samflag 179)
+              read_positions = (aread.pos, aread.mpos, 0, 0, qname)
+              if aread.mpos < aread.pos: read_positions = (aread.mpos, aread.pos, 0, 0, qname)
+              read_d['inv_reads'].append(read_positions)
+            elif not aread.is_reverse and not aread.mate_is_reverse:
+              # forward -- forward = samflag 67 (note: only considering read1, read2 samflag 131)
+              read_positions = (aread.pos, aread.mpos, 1, 1, qname) 
+              if aread.mpos < aread.pos: read_positions = (aread.mpos, aread.pos, 1, 1, qname)
+              read_d['inv_reads'].append(read_positions)
+            elif aread.is_reverse and not aread.mate_is_reverse and aread.pos < aread.mpos:
+              # reverse -- forward = samflag 83 with positive insert (read2 samflag 163 with + insert size)
+              read_positions = (aread.pos, aread.mpos, 0, 1, aread.qname)
+              read_d['td_reads'].append(read_positions)
+            elif not aread.is_reverse and aread.mate_is_reverse and aread.mpos < aread.pos:
+              # reverse -- forward = samflag 99 with - insert (read2 samflag 147 with - insert)
+              read_positions = (aread.mpos, aread.pos, 1, 0, qname)
+              read_d['td_reads'].append(read_positions)
+            if read_positions: read_d['other'].append(read_positions)
+
+    def pe_meta(self, aread):
+        # First check if read is from a proper paired-end mapping --> <--    
+        proper_map = False
+        overlap_reads = False
+        if ( ((aread.flag==83) or (aread.flag==147)) and (aread.isize<0) ) or (((aread.flag==99) or (aread.flag==163)) and (aread.isize>0)):
+          proper_map = True
+          if abs(aread.isize) < 2*len(aread.seq):
+            overlap_reads = True   
+        return proper_map, overlap_reads
+
+    def get_sv_reads(self):
+        self.extract_bam_reads('sv')
+        if 'normal_bam_file' in self.params.opts:
+          self.extract_bam_reads('norm')
+          self.clean_reads('norm')
+        
+        check = True
+        if not self.clean_reads('sv'):
+          self.rm_output_dir()
+          check = False
+        return check
+
+    def setup_read_extraction_files(self, type):
+        self.files['%s_fq'%type] = os.path.join(self.paths['data'],self.name + "_sv_reads.fastq")
+        self.files['%s_sc_unmapped_fa'%type] = os.path.join(self.paths['data'],self.name + "_sv_sc_seqs.fa")
+        if type == 'sv':
+          self.files['sv_bam'] = os.path.join(self.paths['data'],self.name + "_sv_reads.bam")
+          self.files['sv_bam_sorted'] = os.path.join(self.paths['data'],self.name + "_sv_reads.sorted.bam")
 
     def check_overlap(self, dir, mseq, sc_seq):
     #    print dir, sc_seq, mseq, mseq.find(sc_seq)
