@@ -3,8 +3,15 @@ BreaKmer
 
 A method to identify genomic structural variation in target regions/genes from reference-aligned high-throughput sequence data. It uses a “kmer” strategy to assemble misaligned sequence reads for predicting insertions, deletions, inversions, tandem duplications, and translocations at base-pair resolution.
 
+For detailed documentation related to the usage of BreaKmer see the Documentation below or visit this website: http://ryanabo.github.io/BreaKmer
+
+A google groups forum page is also available for posting issues: https://groups.google.com/forum/#!forum/breakmer
+
 News
 ====
+
+#### May 12, 2016
+Continuing to aim for a "runnable" and updated code base in the master branch. Both start_blat_server and prepare_reference_data functions were tested successfully. Once the "run" function works I will begin to develop in the development branch and merge back to master branch. I have also create a google groups forum page for posting issues (https://groups.google.com/forum/#!forum/breakmer).
 
 #### May 11, 2016
 The focus thus far has been on cleaning up the main script to have cleaner and more succinct, modularized code. The parameters are packaged into the params module and utility functions pushed to utils module. Algorithmically nothing will change in this next release. The main features that will be implemented are allowing BreaKmer to run in separate "function" modes - prepare reference data, start blat server, run, etc...
