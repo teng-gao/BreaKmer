@@ -51,7 +51,7 @@ RUN_PARSER.add_argument('--trl_min_seg_len', dest='trl_minseg_len', default=25, 
 RUN_PARSER.add_argument('--align_thresh', dest='align_thresh', default=.90, type=int, help='Threshold for minimum read alignment for assembly. [default: %(default)s]')
 RUN_PARSER.add_argument('--no_output_header', dest='no_output_header', default=False, action='store_true', help='Suppress output headers. [default: %(default)s]')
 RUN_PARSER.add_argument('--discread_only_thresh', dest='discread_only_thresh', default=2, type=int, help='The number of discordant read pairs in a cluster to output without evidence from a split read event. [default: %(default)s]')
-RUN_PARSER.add_argument('--keep_repeat_regions', dest='keep_repeat_regions', default=False, action='store_true', help='Keep indels in repeat regions. No repeat mask bed file required if set. [default: %(default)s]')
+RUN_PARSER.add_argument('--keep_repeat_regions', dest='keep_repeat_regions', default=True, action='store_true', help='Keep indels in repeat regions. No repeat mask bed file required if set. [default: %(default)s]')
 RUN_PARSER.add_argument('--preset_ref_data', dest='preset_ref_data', default=True, action="store_true", help='Preset all the reference data for all the targets before running analysis. [default: %default]')
 # RUN_PARSER.add_argument('--generate_image', dest='generate_image', default=False, action='store_true', help='Generate pileup image for events. [default: %(default)s]')
 RUN_PARSER.add_argument('--hostname', dest='blat_hostname', default='localhost', help='The hostname for the blat server. Localhost will be used if not specified. [default: %(default)s]')
