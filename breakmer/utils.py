@@ -827,28 +827,7 @@ def get_overlap_index(a,b):
 #  while a[i:] != b[:len(a[i:])]:
 #    i += 1
   return i-1
- 
 
- 
-def server_ready(f):
-  logger = logging.getLogger('root')
-  while not os.path.exists(f):
-    logger.info("Waiting for log file %s"%f)
-    time.sleep(10)
-  ready = False
-  f = open(f,'r')
-  flines = f.readlines()
-  for line in flines: 
-    if line.find('Server ready for queries') > -1: ready = True
-  return ready
- 
-# End of utility functions
-################################################################
-
-#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-# Class params
-# Tracks the analysis-level parameters.
-#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 class params:
   def __init__(self,config_d):
     self.opts = config_d
