@@ -213,8 +213,6 @@ class RunTracker(object):
             print 'Server started!'
             return
 
-        print 'Exiting'
-        sys.exit(1)
         trgt_lst = self.params.targets.keys()
         trgt_lst.sort()
         for trgt_name in trgt_lst:

@@ -184,7 +184,7 @@ def check_blat_server(params):
 
     result_filename = os.path.join(test_dir, 'blatserver_test.psl')
     blat_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead %s %d %s %s %s' % (params.get_param('gfclient'), params.get_param('blat_hostname'), params.get_param('blat_port'), params.get_param('reference_fasta_dir'), test_fasta_filename, result_filename)
-    log(logging_name, 'info', 'Blat server test system command %s' % cmd)
+    log(logging_name, 'info', 'Blat server test system command %s' % blat_cmd)
     blat_process = subprocess.Popen(blat_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     output, errors = blat_process.communicate()
     log(logging_name, 'info', 'Realignment output file %s' % result_filename)
@@ -219,6 +219,78 @@ def server_ready(out_file):
             elif line.find('error:') > -1:
                 ready = 'error'
     return ready
+
+
+def run_jellyfish(fa_fn, jellyfish, kmer_size):
+
+    '''
+    '''
+
+    logging_name = 'breakmer.utils'
+    file_path = os.path.split(fa_fn)[0]
+    file_base = os.path.basename(fa_fn)
+    dump_fn = os.path.join(file_path, file_base + "_" + str(kmer_size) + "mers_dump")
+    dump_marker_fn = get_marker_fn(dump_fn)
+    if not os.path.isfile(dump_marker_fn):
+        if not os.path.exists(fa_fn):
+            log(logging_name, 'info', '%s does not exist.' % fa_fn)
+            dump_fn = None
+            return dump_fn
+
+        version_cmd = '%s --version' % jellyfish
+        version_process = subprocess.Popen(version_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = version_process.communicate()
+
+        jfish_version = int(output.split()[1].split('.')[0])
+        log(logging_name, 'info', 'Using jellyfish version %d' % jfish_version)
+
+        count_fn = os.path.join(file_path, file_base + "_" + str(kmer_size) + "mers_counts")
+
+        log(logging_name, 'info', 'Running %s on file %s to determine kmers' % (jellyfish, fa_fn))
+        jellyfish_cmd = '%s count -m %d -s %d -t %d -o %s %s' % (jellyfish, int(kmer_size), 100000000, 8, count_fn, fa_fn)
+        log(logging_name, 'info', 'Jellyfish counts system command %s' % jellyfish_cmd)
+        jellyfish_process = subprocess.Popen(jellyfish_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = jellyfish_process.communicate()
+        log(logging_name, 'info', 'Jellyfish count output %s and errors %s' % (output, errors))
+
+        if jfish_version < 2:
+            count_fn += '_0'
+        dump_cmd = '%s dump -c -o %s %s'%(jellyfish, dump_fn, count_fn)
+        log(logging_name, 'info', 'Jellyfish dump system command %s' % dump_cmd)
+        dump_process = subprocess.Popen(dump_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = dump_process.communicate()
+        log(logging_name, 'info', 'Jellyfish dump output %s and errors %s' % (output, errors))
+        marker_cmd = 'touch %s' % dump_marker_fn
+        marker_process = subprocess.Popen(marker_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = marker_process.communicate()  
+        log(logging_name, 'info', 'Completed jellyfish dump %s, touching marker file %s' % (dump_fn, dump_marker_fn))
+        count_fns = glob.glob(os.path.join(file_path, "*mers_counts*"))
+
+        for count_fn in count_fns:
+            os.remove(count_fn)
+    else:
+        log(logging_name, 'info', 'Jellfish already run and kmers already generated for target.')
+    return dump_fn
+
+
+def setup_ref_data(setup_params):
+    genes = setup_params[0]
+    rep_mask, ref_fa, altref_fa_fns, ref_path, jfish_path, blat_path, kmer_size = setup_params[1]
+    logger = logging.getLogger('root')
+
+    for gene in genes:
+        chrom, bp1, bp2, name, intvs = gene
+        gene_ref_path = os.path.join(ref_path, name)
+        if rep_mask: 
+            logger.info('Extracting repeat mask regions for target gene %s.' % name)
+            setup_rmask(gene, gene_ref_path, rep_mask)
+    
+        logger.info('Extracting refseq sequence for %s, %s:%d-%d' % (name, chr, bp1, bp2))
+        directions = ['forward', 'reverse']
+        for direction in directions:
+            target_fa_fn = os.path.join(gene_ref_path, name + '_' + direction + '_refseq.fa')
+            ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, direction, target_fa_fn)
+            run_jellyfish(ref_fn, jfish_path, kmer_size)
 
 ################################
 # OLD
@@ -440,107 +512,8 @@ def check_repeat_regions(coords, repeat_locs):
   return in_repeat, roverlap, rep_coords, filter_reps_edges
 
 
-
 def get_marker_fn(fn):
   return os.path.join(os.path.split(fn)[0],"."+os.path.basename(fn))
-
-
-def run_jellyfish(fa_fn, jellyfish, kmer_size):
-  logger = logging.getLogger('root')
-  file_path = os.path.split(fa_fn)[0]
-  file_base = os.path.basename(fa_fn)
-  dump_fn = os.path.join(file_path, file_base + "_" + str(kmer_size) + "mers_dump")
-  dump_marker_fn = get_marker_fn(dump_fn)
-  if not os.path.isfile(dump_marker_fn):
-    if not os.path.exists(fa_fn):
-      logger.info('%s does not exist.'%fa_fn)
-      dump_fn = None
-      return dump_fn
-
-    cmd = '%s --version'%jellyfish
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-    output, errors = p.communicate()
-    jfish_version = int(output.split()[1].split('.')[0])
-    logger.info('Using jellyfish version %d'%jfish_version)
-    count_fn = os.path.join(file_path, file_base + "_" + str(kmer_size) + "mers_counts")
-    logger.info('Running %s on file %s to determine kmers'%(jellyfish,fa_fn)) 
-    cmd = '%s count -m %d -s %d -t %d -o %s %s'%(jellyfish,int(kmer_size),100000000,8,count_fn,fa_fn)
-    logger.info('Jellyfish counts system command %s'%cmd)
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    output, errors = p.communicate()
-    logger.info('Jellyfish count output %s'%output)
-    logger.info('Jellyfish count errors %s'%errors)
-
-    if jfish_version < 2: count_fn += '_0'
-    cmd = '%s dump -c -o %s %s'%(jellyfish,dump_fn,count_fn)
-    logger.info('Jellyfish dump system command %s'%cmd)
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    output, errors = p.communicate()
-    logger.info('Jellyfish dump output %s'%output)
-    logger.info('Jellyfish dump errors %s'%errors)
-    cmd = 'touch %s'%dump_marker_fn
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    output, errors = p.communicate()  
-    logger.info('Completed jellyfish dump %s, touching marker file %s'%(dump_fn,dump_marker_fn))
-    count_fns = glob.glob(os.path.join(file_path, "*mers_counts*"))
-#    if fa_fn.find("altrefseq") > -1: 
-#      os.remove(fa_fn)
-    for cf in count_fns:
-      os.remove(cf)
-  else:
-    logger.info('Jellfish already run and kmers already generated for target.')
-  return dump_fn
-
-
-def setup_ref_data(setup_params):
-   genes = setup_params[0]
-   rep_mask, ref_fa, altref_fa_fns, ref_path, jfish_path, blat_path, kmer_size = setup_params[1]
-   logger = logging.getLogger('root')
-
-   for gene in genes:
-     chr, bp1, bp2, name, intvs = gene
-     gene_ref_path = os.path.join(ref_path,name)
-     if rep_mask: 
-       logger.info('Extracting repeat mask regions for target gene %s.'%name)
-       setup_rmask(gene, gene_ref_path, rep_mask)
-    
-     logger.info('Extracting refseq sequence for %s, %s:%d-%d'%(name, chr, bp1, bp2))
-     directions = ['forward', 'reverse']
-     for dir in directions:
-       target_fa_fn = os.path.join(gene_ref_path, name + '_' + dir + '_refseq.fa')
-       ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, dir, target_fa_fn)
-       run_jellyfish(ref_fn, jfish_path, kmer_size)
-     '''
-     if altref_fa_fns: 
-       if not create_ref_test_fa(os.path.join(gene_ref_path, name + '_forward_refseq.fa'), os.path.join(gene_ref_path, name + '_start_end_refseq.fa')):
-         return
-
-       altref_fns = []
-       alt_iter = 1
-       altref_fas = altref_fa_fns.split(',')
-       for altref in altref_fas:
-         for dir in directions:
-            fn = os.path.join(gene_ref_path, name + '_' + dir + '_altrefseq_' + str(alt_iter) + '.fa')
-            marker_fn = get_marker_fn(fn) 
-            if not os.path.isfile(marker_fn):
-              altref_fns.append((altref, fn, alt_iter))
-         alt_iter += 1
-      
-       if len(altref_fns) > 0:
-         altref_fas = altref_fa_fns.split(',')
-         alt_iter = 1
-         for i in range(len(altref_fns)):
-           alt_gene_coords = get_altref_genecoords(blat_path, altref_fns[i][0], os.path.join(gene_ref_path, name + '_start_end_refseq.fa'), chr, os.path.join(gene_ref_path, name + '_altref_blat_' + str(altref_fns[i][2]) + '.psl'))
-           if not alt_gene_coords[2]:
-             logger.info("No sequence for target gene %s in %s, no reference kmers extracted."%(name, altref_fns[i][0]))
-             alt_iter += 1
-             continue
-           gene = (chr, alt_gene_coords[0][1], alt_gene_coords[1][1], name, intvs)
-           target_fa_fn = altref_fns[i][1] #os.path.join(gene_ref_path, name + '_' + dir + '_altrefseq_' + str(alt_iter) + '.fa')
-           ref_fn = extract_refseq_fa(gene, gene_ref_path, altref_fns[i][0], dir, target_fa_fn)
-           run_jellyfish(ref_fn, jfish_path, kmer_size)
-         os.remove(os.path.join(gene_ref_path, name + '_start_end_refseq.fa'))
-    '''
 
 
 def get_fastq_reads(fn, sv_reads):
