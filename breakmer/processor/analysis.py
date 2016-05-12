@@ -178,7 +178,7 @@ class RunTracker(object):
         ref_data_dir = self.params.opts['reference_data_dir']
         jfish_path = self.params.opts['jellyfish']
         blat_path = self.params.opts['blat']
-        ref_params = [mask_fn, ref_fa_fn, altref_fa_fns, ref_data_dir, jfish_path, blat_path, self.params.get_kmer_size()]
+        ref_params = [mask_fn, ref_fa_fn, altref_fa_fns, ref_data_dir, jfish_path, blat_path, self.params.get_param('kmer_size')]
         setup_params = izip(trgt_groups, repeat(ref_params))
         p.map(utils.setup_ref_data, setup_params)
 
