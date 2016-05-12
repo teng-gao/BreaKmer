@@ -136,8 +136,8 @@ class RunTracker(object):
         '''
         '''
 
-        nprocs = 6
-        ngroups = 6
+        nprocs = int(self.params.get_param('nprocs'))
+        ngroups = nprocs
         ntargets = len(self.params.targets)
         ntargets_per_group = ntargets/nprocs
         modval = math.fmod(ntargets, nprocs)
@@ -163,12 +163,13 @@ class RunTracker(object):
             trgt_groups.append(trgt_group)
 
         mask_fn = None
-        if not self.params.opts['keep_repeat_regions']:
-            if 'repeat_mask_file' not in self.params.opts:
-                utils.log(self.logging_name, 'error', 'Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
-                self.params.opts['keep_repeat_regions'] = True
-            else:
-                mask_fn = self.params.opts['repeat_mask_file']
+        if 'keep_repeat_regions' in self.params.opts:
+            if not self.params.opts['keep_repeat_regions']:
+                if 'repeat_mask_file' not in self.params.opts:
+                    utils.log(self.logging_name, 'error', 'Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
+                    self.params.opts['keep_repeat_regions'] = True
+                else:
+                    mask_fn = self.params.opts['repeat_mask_file']
 
         ref_fa_fn = self.params.opts['reference_fasta']
         altref_fa_fns = None
