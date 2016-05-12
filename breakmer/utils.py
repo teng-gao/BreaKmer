@@ -126,7 +126,7 @@ def start_blat_server(params):
     # Check if 2bit file exists - if not then create it.
     params.set_param('blat_2bit', os.path.join(params.get_param('reference_fasta_dir'), ref_fasta_name + ".2bit"))
     if not os.path.exists(params.get_param('blat_2bit')):  # Create 2bit file to use for running the blat server.
-        log(logging_name, 'info', 'Creating 2bit from %s reference fasta' % ref_fasta_name + file_ext)
+        log(logging_name, 'info', 'Creating 2bit from %s reference fasta' % (ref_fasta_name + file_ext))
         curdir = os.getcwd()
         os.chdir(params.get_param('reference_fasta_dir'))
         twobit_cmd = '%s %s %s' % (params.get_param('fatotwobit'), ref_fasta_name + file_ext, ref_fasta_name + ".2bit")
@@ -146,14 +146,16 @@ def start_blat_server(params):
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     start_time = time.time()
-    while not server_ready(params.get_param('gfserver_log')):  # Wait for the blat server to initiate. Timeout if it has not started in 15 minutes.
+    gfserver_state = server_ready(params.get_param('gfserver_log'))
+    while gfserver_state != 'ready':  # Wait for the blat server to initiate. Timeout if it has not started in 15 minutes.
         new_time = time.time()
         wait_time = new_time - start_time
-        if wait_time > 1000:
-            log(logging_name, 'error', 'gfServer wait time exceeded ~15 minutes, exiting')
+        if (wait_time > 1000) or gfserver_state == 'error':
+            log(logging_name, 'error', 'gfServer failed to start, please check the gfServer log file %s, exiting' % params.get_param('gfserver_log'))
             sys.exit(1)
         log(logging_name, 'info', 'Waiting for blat gfServer to load reference seq')
         time.sleep(60)
+        gfserver_state = server_ready(params.get_param('gfserver_log'))
     log(logging_name, 'info', 'Server ready!')
     os.chdir(curdir)
 
@@ -209,11 +211,13 @@ def server_ready(out_file):
     while not os.path.exists(out_file):
         logger.info('Waiting for log file %s' % out_file)
         time.sleep(10)
-    ready = False
+    ready = 'waiting'
     with open(out_file, 'r') as server_file:
-      for line in server_file:
-          if line.find('Server ready for queries') > -1:
-              ready = True
+        for line in server_file:
+            if line.find('Server ready for queries') > -1:
+                ready = 'ready'
+            elif line.find('error:') > -1:
+                ready = 'error'
     return ready
 
 ################################
