@@ -445,7 +445,6 @@ def get_marker_fn(fn):
   return os.path.join(os.path.split(fn)[0],"."+os.path.basename(fn))
 
 
-
 def run_jellyfish(fa_fn, jellyfish, kmer_size):
   logger = logging.getLogger('root')
   file_path = os.path.split(fa_fn)[0]
@@ -463,10 +462,9 @@ def run_jellyfish(fa_fn, jellyfish, kmer_size):
     output, errors = p.communicate()
     jfish_version = int(output.split()[1].split('.')[0])
     logger.info('Using jellyfish version %d'%jfish_version)
-     
     count_fn = os.path.join(file_path, file_base + "_" + str(kmer_size) + "mers_counts")
     logger.info('Running %s on file %s to determine kmers'%(jellyfish,fa_fn)) 
-    cmd = '%s count -m %d -s %d -t %d -o %s %s'%(jellyfish,kmer_size,100000000,8,count_fn,fa_fn)
+    cmd = '%s count -m %d -s %d -t %d -o %s %s'%(jellyfish,int(kmer_size),100000000,8,count_fn,fa_fn)
     logger.info('Jellyfish counts system command %s'%cmd)
     p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
     output, errors = p.communicate()
@@ -494,11 +492,9 @@ def run_jellyfish(fa_fn, jellyfish, kmer_size):
   return dump_fn
 
 
-
 def setup_ref_data(setup_params):
    genes = setup_params[0]
    rep_mask, ref_fa, altref_fa_fns, ref_path, jfish_path, blat_path, kmer_size = setup_params[1]
-
    logger = logging.getLogger('root')
 
    for gene in genes:
@@ -507,14 +503,14 @@ def setup_ref_data(setup_params):
      if rep_mask: 
        logger.info('Extracting repeat mask regions for target gene %s.'%name)
        setup_rmask(gene, gene_ref_path, rep_mask)
-     
+    
      logger.info('Extracting refseq sequence for %s, %s:%d-%d'%(name, chr, bp1, bp2))
      directions = ['forward', 'reverse']
      for dir in directions:
        target_fa_fn = os.path.join(gene_ref_path, name + '_' + dir + '_refseq.fa')
        ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, dir, target_fa_fn)
        run_jellyfish(ref_fn, jfish_path, kmer_size)
-
+     '''
      if altref_fa_fns: 
        if not create_ref_test_fa(os.path.join(gene_ref_path, name + '_forward_refseq.fa'), os.path.join(gene_ref_path, name + '_start_end_refseq.fa')):
          return
@@ -544,7 +540,7 @@ def setup_ref_data(setup_params):
            ref_fn = extract_refseq_fa(gene, gene_ref_path, altref_fns[i][0], dir, target_fa_fn)
            run_jellyfish(ref_fn, jfish_path, kmer_size)
          os.remove(os.path.join(gene_ref_path, name + '_start_end_refseq.fa'))
-
+    '''
 
 
 def get_fastq_reads(fn, sv_reads):
