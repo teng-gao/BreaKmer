@@ -20,92 +20,6 @@ __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
 
 
-def process_reads(areads, read_d, bamfile):
-
-    '''
-    '''
-
-    pair_indices = {}
-    valid_reads = []
-
-    for aread in areads:
-        skip = False
-        if aread.mate_is_unmapped or aread.rnext == -1: # Indicate that mate is unmapped
-            aread.mate_is_unmapped = True
-        if aread.is_duplicate or aread.is_qcfail: # Skip duplicates and failures
-            skip = True
-        if aread.is_unmapped: # Store unmapped reads
-            read_d['unmapped'][aread.qname] = aread
-            skip = True
-
-        # If read is unmapped or duplicate or qcfail, then don't store
-        if not skip:
-            proper_map = False
-            overlap_reads = False
-            # These two functions can opeate on the first read of the pair.
-            # Check if fragment hasn't been checked yet and that the mate is mapped.
-            if aread.qname not in pair_indices and not aread.mate_is_unmapped:
-                add_discordant_pe(aread, read_d, bamfile)
-                proper_map, overlap_reads = pe_meta(aread)
-            valid_reads.append((aread, proper_map, overlap_reads))
-
-            if aread.qname not in pair_indices and not aread.mate_is_unmapped:
-                pair_indices[aread.qname] = {}
-            if aread.qname in pair_indices:
-                pair_indices[aread.qname][int(aread.is_read1)] = len(valid_reads)-1
-    return pair_indices, valid_reads
-
-
-def pe_meta(aread):
-    # First check if read is from a proper paired-end mapping --> <--    
-    proper_map = False
-    overlap_reads = False
-    if (((aread.flag == 83) or (aread.flag == 147)) and (aread.tlen < 0)) or (((aread.flag == 99) or (aread.flag == 163)) and (aread.tlen > 0)):
-        proper_map = True
-        if abs(aread.tlen) < (2 * len(aread.seq)):
-            overlap_reads = True
-    return proper_map, overlap_reads
-
-
-def add_discordant_pe(aread, read_d, bamfile):
-  qname = aread.qname
-  # Keep discordant read pairs where the map quality is > 0, the paired reads are mapped to different chroms or > 1000 bp apart, and
-  # the mate is mapped.
-  if aread.mapq > 0 and ((aread.rnext != -1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
-    mate_refid = bamfile.getrname(aread.rnext) # Grab the paired read
-    mate_read = bamfile.mate(aread)
-    if mate_read.mapq > 0:
-      if mate_refid not in read_d['disc']:
-        read_d['disc'][mate_refid] = []
-      read_d['disc'][mate_refid].append((aread.pos, aread.pnext)) # Store the read position and the mate position
-
-  if aread.mapq > 0 and not aread.mate_is_unmapped and aread.tid == aread.mrnm:
-    if aread.is_read1:
-      read_positions = None
-      if aread.is_reverse and aread.mate_is_reverse:
-        # reverse -- reverse, samflag 115 (note: only considering read1, read2 samflag 179)
-        read_positions = (aread.pos, aread.mpos, 0, 0, qname)
-        if aread.mpos < aread.pos:
-            read_positions = (aread.mpos, aread.pos, 0, 0, qname)
-        read_d['inv_reads'].append(read_positions)
-      elif not aread.is_reverse and not aread.mate_is_reverse:
-        # forward -- forward = samflag 67 (note: only considering read1, read2 samflag 131)
-        read_positions = (aread.pos, aread.mpos, 1, 1, qname)
-        if aread.mpos < aread.pos:
-            read_positions = (aread.mpos, aread.pos, 1, 1, qname)
-        read_d['inv_reads'].append(read_positions)
-      elif aread.is_reverse and not aread.mate_is_reverse and aread.pos < aread.mpos:
-        # reverse -- forward = samflag 83 with positive insert (read2 samflag 163 with + insert size)
-        read_positions = (aread.pos, aread.mpos, 0, 1, aread.qname)
-        read_d['td_reads'].append(read_positions)
-      elif not aread.is_reverse and aread.mate_is_reverse and aread.mpos < aread.pos:
-        # reverse -- forward = samflag 99 with - insert (read2 samflag 147 with - insert)
-        read_positions = (aread.mpos, aread.pos, 1, 0, qname)
-        read_d['td_reads'].append(read_positions)
-      if read_positions:
-        read_d['other'].append(read_positions)
-
-
 class RunTracker(object):
 
     """Class to manage the running of all the target region analyses.
@@ -210,7 +124,7 @@ class RunTracker(object):
 
         utils.start_blat_server(self.params)
         if self.params.fnc_cmd == 'start_blat_server':
-            print 'Server started!'
+            print 'Server started on host %s and port %s' % (self.params.get_param('blat_hostname'), self.params.get_param('blat_port'))
             return
 
         trgt_lst = self.params.targets.keys()
@@ -226,8 +140,8 @@ class RunTracker(object):
             if not trgt.get_sv_reads():
                 continue
 
-            trgt.compare_kmers() # Get reference and case kmers
-            trgt.resolve_sv() # Build contigs and blat them against the reference genome
+            trgt.compare_kmers()  # Get reference and case kmers
+            trgt.resolve_sv()  # Build contigs and blat them against the reference genome
             self.summary_header, trgt_summary = trgt.get_summary()
             self.summary[trgt.name] = trgt_summary
             utils.log(self.logging_name, 'info', '%s summary\n%s\n%s' % (trgt.name, self.summary_header, trgt_summary))
