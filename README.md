@@ -10,6 +10,9 @@ A google groups forum page is also available for posting issues: https://groups.
 News
 ====
 
+#### May 17, 2016
+Developments continue to scrub and improve old, "stable" code with new features. Modifications and testing for the "run" function have been the bulk of work lately.
+
 #### May 12, 2016
 Continuing to aim for a "runnable" and updated code base in the master branch. Both start_blat_server and prepare_reference_data functions were tested successfully. Once the "run" function works I will begin to develop in the development branch and merge back to master branch. I have also create a google groups forum page for posting issues (https://groups.google.com/forum/#!forum/breakmer).
 
