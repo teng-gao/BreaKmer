@@ -10,6 +10,9 @@ A google groups forum page is also available for posting issues: https://groups.
 News
 ====
 
+#### May 19, 2016
+All BreaKmer functionality is currently working on a single test sample (a translocation) with updates and changes. Work is progressing to clean the code and organize into modules and remove PEP8 incompatibilities.
+
 #### May 17, 2016
 Developments continue to scrub and improve old, "stable" code with new features. Modifications and testing for the "run" function have been the bulk of work lately.
 
