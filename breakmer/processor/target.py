@@ -1,12 +1,18 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+
+'''
+BreaKmer target module
+'''
+
+
 import sys
 import os
-import pysam
 import subprocess
 import logging
 import shutil
+import pysam
 import breakmer.utils as utils
 import breakmer.assembly.assembler as assembler
 import breakmer.assembly.contig as contig
@@ -22,7 +28,7 @@ def pe_meta(aread):
     '''
     '''
 
-    # First check if read is from a proper paired-end mapping --> <--    
+    # First check if read is from a proper paired-end mapping --> <--
     proper_map = False
     overlap_reads = False
     if (((aread.flag == 83) or (aread.flag == 147)) and (aread.tlen < 0)) or (((aread.flag == 99) or (aread.flag == 163)) and (aread.tlen > 0)):
@@ -74,49 +80,25 @@ def add_discordant_pe(aread, read_d, bamfile):
             if read_positions:
                 read_d['other'].append(read_positions)
 
-# def process_reads(areads, read_d, bamfile):
 
-#     '''
-#     '''
+class TargetManager(object):
 
-#     pair_indices = {}
-#     valid_reads = []
+    '''TargetManager class handles all the high level information relating to a target.
+    The analysis is peformed at the target level, so this class contains all the information
+    necessary to perform an independent analysis.
 
-#     for aread in areads:
-#         print aread
-#         skip = False
-#         if aread.is_duplicate or aread.is_qcfail:  # Skip duplicates and failures
-#             skip = True
-#         if aread.mate_is_unmapped or aread.rnext == -1:  # Indicate that mate is unmapped
-#             aread.mate_is_unmapped = True
-#         if aread.is_unmapped:  # Store unmapped reads
-#             read_d['unmapped'][aread.qname] = aread
-#             skip = True
-
-#         # If read is unmapped or duplicate or qcfail, then don't store
-#         if skip:
-#             continue
-
-#         proper_map = False
-#         overlap_reads = False
-#         # These two functions can operate on the first read of the pair.
-#         # Check if fragment hasn't been checked yet and that the mate is mapped.
-#         if aread.qname not in pair_indices and not aread.mate_is_unmapped:
-#             add_discordant_pe(aread, read_d, bamfile)
-#             proper_map, overlap_reads = pe_meta(aread)
-#         valid_reads.append((aread, proper_map, overlap_reads))
-
-#         if aread.qname not in pair_indices and not aread.mate_is_unmapped:
-#             pair_indices[aread.qname] = {}
-#         if aread.qname in pair_indices:
-#             pair_indices[aread.qname][int(aread.is_read1)] = len(valid_reads) - 1
-#     sys.exit()
-#     return pair_indices, valid_reads
-
-
-class target(object):
-
-    '''
+    Attributes:
+        params (ParamManager):      Parameters for breakmer analysis.
+        logging_name (str):         Module name for logging file purposes.
+        name (str):                 Target name specified in the input bed file.
+        chrom (str):                Chromosome ID as specified in the input bed file.
+        start (int):                Genomic position for the target region (minimum value among all intervals).
+        end (int):                  Genomic position for the target region (maximum value among all intervals).
+        paths (dict):               Contains the analysis paths for this target.
+        files (dict):               Dicionary containing paths to file names needed for analysis.
+        read_len (int):             Length of a single read.
+        variation (Variation):      Stores data for variants identified within the target.
+        regionBuffer (int):         Base pairs to add or subtract from the target region end and start locations.
 
     '''
 
@@ -125,8 +107,8 @@ class target(object):
         '''
         '''
 
-        self.name = None
         self.params = params
+        self.name = None
         self.chrom = None
         self.start = None
         self.end = None
@@ -197,9 +179,9 @@ class target(object):
 
         # Set reference paths
         if 'keep_repeat_regions' in self.params.opts:
-            if not self.params.opts['keep_repeat_regions']: 
+            if not self.params.opts['keep_repeat_regions']:
                 if 'repeat_mask_file' not in self.params.opts:
-                    self.logger.error('Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
+                    utils.log(self.logging_name, 'error', 'Keep repeat regions option is false, but no repeat mask bed file provided. All repeat region variants will be reported.')
                     self.params.opts['keep_repeat_regions'] = True
                 else:
                     self.files['rep_mask_fn'] = os.path.join(self.paths['ref_data'], self.name+'_rep_mask.bed')
@@ -214,13 +196,29 @@ class target(object):
                 <target_name>_forward_refseq.fa_dump
                 <target_name>_reverse_refseq.fa_dump
         '''
-        self.files['target_ref_fn'] = [os.path.join(self.paths['ref_data'], self.name+'_forward_refseq.fa'), os.path.join(self.paths['ref_data'], self.name+'_reverse_refseq.fa')]
+        self.files['target_ref_fn'] = [os.path.join(self.paths['ref_data'], self.name + '_forward_refseq.fa'), os.path.join(self.paths['ref_data'], self.name + '_reverse_refseq.fa')]
 
         ref_fa_marker_f = open(os.path.join(self.paths['ref_data'], '.reference_fasta'), 'w')
         ref_fa_marker_f.write(self.params.opts['reference_fasta'])
         ref_fa_marker_f.close()
 
-        self.files['ref_kmer_dump_fn'] = [os.path.join(self.paths['ref_data'], self.name+'_forward_refseq.fa_dump'), os.path.join(self.paths['ref_data'], self.name+'_reverse_refseq.fa_dump')]
+        self.files['ref_kmer_dump_fn'] = [os.path.join(self.paths['ref_data'], self.name + '_forward_refseq.fa_dump'), os.path.join(self.paths['ref_data'], self.name + '_reverse_refseq.fa_dump')]
+
+    def get_sv_reads(self):
+
+        '''
+        '''
+
+        self.extract_bam_reads('sv')
+        if 'normal_bam_file' in self.params.opts:
+            self.extract_bam_reads('norm')
+            self.clean_reads('norm')
+
+        check = True
+        if not self.clean_reads('sv'):
+            self.rm_output_dir()
+            check = False
+        return check
 
     def setup_read_extraction_files(self, sample_type):
 
@@ -393,26 +391,10 @@ class target(object):
 
         if sample_type == 'sv':
             sv_bam.close()
-            self.logger.info('Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
+            utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
             pysam.sort(self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
             self.logger.info('Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
             pysam.index(self.files['sv_bam_sorted'])
-
-    def get_sv_reads(self):
-
-        '''
-        '''
-
-        self.extract_bam_reads('sv')
-        if 'normal_bam_file' in self.params.opts:
-            self.extract_bam_reads('norm')
-            self.clean_reads('norm')
-
-        check = True
-        if not self.clean_reads('sv'):
-            self.rm_output_dir()
-            check = False
-        return check
 
     def clean_reads(self, sample_type):
 
@@ -426,10 +408,10 @@ class target(object):
         self.files['%s_cleaned_fq' % sample_type] = os.path.join(self.paths['data'], self.name + "_%s_reads_cleaned.fastq" % sample_type)
         self.logger.info('Writing clean reads to %s' % self.files['%s_cleaned_fq' % sample_type])
         cutadapt_parameters = utils.stringify(cutadapt_config)
-        cmd = '%s %s %s %s > %s' % (sys.executable, cutadapt, cutadapt_parameters, self.files['%s_fq' % sample_type], self.files['%s_cleaned_fq' % sample_type])
-        self.logger.debug('Cutadapt system command %s' % cmd)
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        output, errors = p.communicate()
+        cutadapt_cmd = '%s %s %s %s > %s' % (sys.executable, cutadapt, cutadapt_parameters, self.files['%s_fq' % sample_type], self.files['%s_cleaned_fq' % sample_type])
+        utils.log(self.logging_name, 'debug', 'Cutadapt system command %s' % cutadapt_cmd)
+        cutadapt_proc = subprocess.Popen(cutadapt_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = cutadapt_proc.communicate()
         self.logger.debug('Clean reads output %s' % output)
         self.logger.debug('Clean reads errors %s' % errors)
 
@@ -443,7 +425,8 @@ class target(object):
         check = True
         if len(self.cleaned_read_recs[sample_type]) == 0:
             check = False
-        self.logger.info('Check there are cleaned reads %r' % check)
+
+        utils.log(self.logging_name, 'info', 'Check there are cleaned reads %r' % check)
         return check
 
     def compare_kmers(self):
@@ -455,22 +438,22 @@ class target(object):
         jellyfish = self.params.opts['jellyfish']
         kmer_size = int(self.params.get_param('kmer_size'))
 
-        for i in range(len(self.files['target_ref_fn'])): 
-            self.logger.info('Indexing kmers for reference sequence %s' % self.files['target_ref_fn'][i])
+        for i in range(len(self.files['target_ref_fn'])):
+            utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_ref_fn'][i])
             self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_ref_fn'][i], jellyfish, kmer_size), self.kmers['ref'])
 
         if 'target_altref_fn' in self.files:
             for i in range(len(self.files['target_altref_fn'])):
                 for j in range(len(self.files['target_altref_fn'][i])):
-                    self.logger.info('Indexing kmers for reference sequence %s' % self.files['target_altref_fn'][i])
+                    utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_altref_fn'][i])
                     self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_altref_fn'][i][j], jellyfish, kmer_size), self.kmers['ref'])
 
-        self.logger.info('Indexing kmers for sample sequence %s' % self.files['sv_cleaned_fq'])
-        self.kmers['case'] = {} 
+        utils.log(self.logging_name, 'info', 'Indexing kmers for sample sequence %s' % self.files['sv_cleaned_fq'])
+        self.kmers['case'] = {}
         self.kmers['case'] = utils.load_kmers(utils.run_jellyfish(self.files['sv_cleaned_fq'], jellyfish, kmer_size), self.kmers['case'])
         self.kmers['case_sc'] = {}
         self.kmers['case_sc'] = utils.load_kmers(utils.run_jellyfish(self.files['sv_sc_unmapped_fa'], jellyfish, kmer_size), self.kmers['case_sc'])
-        sc_mers = set(self.kmers['case'].keys()) & set(self.kmers['case_sc']) 
+        sc_mers = set(self.kmers['case'].keys()) & set(self.kmers['case_sc'])
         sample_only_mers = list(sc_mers.difference(set(self.kmers['ref'].keys())))
 
         if 'normal_bam_file' in self.params.opts:
@@ -494,9 +477,9 @@ class target(object):
         self.kmers['case'] = {}
         self.kmers['case_sc'] = {}
 
-        self.logger.info('Writing %d sample-only kmers to file %s' % (len(self.kmers['case_only']), self.files['sample_kmers']))
+        utils.log(self.logging_name, 'info', 'Writing %d sample-only kmers to file %s' % (len(self.kmers['case_only']), self.files['sample_kmers']))
         self.files['kmer_clusters'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers_merged.out")
-        self.logger.info('Writing kmer clusters to file %s' % self.files['kmer_clusters'])
+        utils.log(self.logging_name, 'info', 'Writing kmer clusters to file %s' % self.files['kmer_clusters'])
         
         self.kmers['clusters'] = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.read_len)
         self.cleaned_read_recs = None
@@ -508,20 +491,20 @@ class target(object):
         '''
 
         contig_iter = 1
-        self.logger.info('Resolving structural variants from %d kmer clusters' % len(self.kmers['clusters']))
-        for kc in self.kmers['clusters']:
-            self.logger.info('Assessing contig %s' % kc.aseq.seq)
+        utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.kmers['clusters']))
+        for assembled_contig in self.kmers['clusters']:
+            utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
             contig_id = 'contig' + str(contig_iter)
-            ctig = contig.TargetContig(self, contig_id, kc)
-            ctig.query_ref(self.files['target_ref_fn'][0], self.get_values()) 
+            ctig = contig.TargetContig(self, contig_id, assembled_contig)
+            ctig.query_ref(self.files['target_ref_fn'][0], self.get_values())
             ctig.make_calls(self.get_values(), self.disc_reads, self.repeat_mask)
 
             if ctig.has_result():
                 ctig.write_result(self.paths['output'])
                 ctig.write_bam(self.files['sv_bam_sorted'], self.paths['output'])
                 self.results.append(ctig.result)
-            else: 
-                self.logger.info('%s has no structural variant result.' % ctig.id)
+            else:
+                utils.log(self.logging_name, 'info', '%s has no structural variant result.' % ctig.id)
             contig_iter += 1
 
     def get_values(self):
@@ -563,6 +546,24 @@ class target(object):
         if not os.path.exists(self.paths[key]):
             os.makedirs(self.paths[key])
 
+    def set_ref_data(self):
+
+        '''
+        '''
+
+        # Write rmask bed file if needed.
+        # if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts: 
+        #   self.logger.info('Extracting repeat mask regions for target gene %s.' % self.name)
+        #   self.repeat_mask = setup_rmask(self.get_values(), self.paths['ref_data'], self.params.opts['repeat_mask_file'])
+         
+        # Write reference fasta file if needed.
+        for target_refseq_fn in self.files['target_ref_fn']:
+            direction = "forward"
+            if target_refseq_fn.find("forward") == -1:
+                direction = "reverse"
+            self.logger.info('Extracting refseq sequence and writing %s' % target_refseq_fn)
+            utils.extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.get_param('reference_fasta'), direction, target_refseq_fn, self.params.get_param('buffer_size'))
+
     # def setup_rmask(self,marker_fn):
 
     #     '''
@@ -597,54 +598,6 @@ class target(object):
     #         rchr,rbp1,rbp2,rname = line.split()
     #         self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
     #       rep_f.close()
-
-    # def set_ref_data(self):
-
-    #     '''
-    #     '''
-
-    #     # Write rmask bed file if needed.
-    #     if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts: 
-    #       self.logger.info('Extracting repeat mask regions for target gene %s.' % self.name)
-    #       self.repeat_mask = setup_rmask(self.get_values(), self.paths['ref_data'], self.params.opts['repeat_mask_file'])
-         
-    #     # Write reference fasta file if needed.
-    #     for i in range(len(self.files['target_ref_fn'])):
-    #       fn = self.files['target_ref_fn'][i]
-    #       direction = "forward"
-    #       if fn.find("forward") == -1: direction = "reverse"
-    #       self.logger.info('Extracting refseq sequence and writing %s'%fn)
-    #       extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.opts['reference_fasta'], direction, fn)
-
-    #     # Write alternate reference files.
-    #     if 'target_altref_fn' in self.files:
-    #       if not create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")):
-    #         return
-
-    #       altref_fns = []
-    #       alt_iter = 1
-    #       for i in range(len(self.files['target_altref_fn'])):
-    #         for j in range(len(self.files['target_altref_fn'][i])):
-    #            fn = self.files['target_altref_fn'][i][j]
-    #            marker_fn = get_marker_fn(fn) 
-    #            if not os.path.isfile(marker_fn):
-    #              altref_fns.append((self.params.opts['alternate_reference_fastas'][i], fn, alt_iter))
-    #         alt_iter += 1
-    #       if len(altref_fns) > 0:
-    #         create_ref_test_fa(os.path.join(self.paths['ref_data'], self.name + "_forward_refseq.fa"), os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"))
-    #         for i in range(len(altref_fns)): #range(len(self.files['target_altref_fn'])):
-    #           alt_gene_coords = get_altref_genecoords(self.params.opts['blat'], altref_fns[i][0], os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa"), self.chrom, os.path.join(self.paths['ref_data'], self.name + '_altref_blat_' + str(altref_fns[i][2]) + '.psl'))
-    #           if not alt_gene_coords[2]:
-    #             self.logger.info("No sequence for target gene in %s, no reference kmers extracted."%altref_fns[i][0])
-    #             continue
-    #           gene_vals = (self.chrom, alt_gene_coords[0][1], alt_gene_coords[1][1], self.name, self.target_intervals)
-    #           fn = altref_fns[i][1] #self.files['target_altref_fn'][i][j]
-    #           direction = "forward"
-    #           if fn.find("forward") == -1: direction = "reverse"
-    #           self.logger.info('Extracting alternate refseq sequence and writing %s'%fn)
-    #           extract_refseq_fa(gene_vals, self.paths['ref_data'], altref_fns[i][0], direction, fn)
-            # Clean up BLAT files!
-    #        os.remove(os.path.join(self.paths['ref_data'], self.name + "_start_end_refseq.fa")) 
 
     # def add_discordant_pe(self, aread, read_d, bamfile):
     #     qname = aread.qname
@@ -702,8 +655,12 @@ class target(object):
             return mseq.find(sc_seq) != (len(mseq)-len(sc_seq))
         else: return mseq.find(sc_seq) != 0
 
-  # Move to utils
+
     def check_pair_overlap(self, mate_seq, read, coords, trim_dir):
+
+        '''
+        '''
+
         nmisses = 0
         add_sc = True
         sc_seq = read.seq[coords[0]:coords[1]]
@@ -738,6 +695,10 @@ class target(object):
         return add_sc #, read
 
     def write_results(self):
+
+        '''
+        '''
+
         result_files = {}
         for res in self.results:
             tag = res[6]
@@ -755,6 +716,10 @@ class target(object):
             result_files[f].close()
 
     def get_sv_counts(self):
+
+        '''
+        '''
+
         total = 0
         rearr_genes = []
         for res in self.results:
@@ -775,6 +740,10 @@ class target(object):
         return total
 
     def get_summary(self):
+
+        '''
+        '''
+
         header = ['Target','N_contigs', 'Total_variants']
         total = self.get_sv_counts()
         str_out = self.name + '\t' + str(len(self.kmers['clusters'])) + '\t' + str(total) + '\t'
@@ -783,7 +752,8 @@ class target(object):
         header += ['N_'+str(x) for x in keys]
         rearrs = '-'
         for t in keys:
-          if t == 'rearrangment': rearrs = self.svs[t][1]
+          if t == 'rearrangment':
+            rearrs = self.svs[t][1]
           str_out += str(self.svs[t][0]) +'\t'
         header.append('Rearrangements')
         str_out += rearrs
