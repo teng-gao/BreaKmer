@@ -1,6 +1,13 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [0.0.4-beta] - 2016-05-19
+    - Removed parameter 'var_filter'. All variants will be reported and the user can filter beyond that.
+    - Major bug fix in function to determine the blat hits that make up a contig sequence. This should allow for more sensitive calling where a contig sequence contains multiple breakpoint events.
+    - Gene annotations added back as a required parameter, along with keep_intron_vars parameter. These will be transitioned in the next version.
+    - Check binaries function added as an initial check before analysis begins.
+    - Added estimation of paired-end insert size distribution based on a sample of well-mapped reads.
+
 ## [0.0.4-beta] - 2016-05-17
     - Added print statement for the blat server hostname and port used when the server is started.
     - Minor bug fix when starting blat server and checking existence of a blat server. The blat server is started from the directory that the reference file is located and ONLY the reference file name is used, not the full path. When the gfClient is run against the server the absolute path to the reference 2bit file is used.
