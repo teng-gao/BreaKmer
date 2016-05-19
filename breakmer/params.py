@@ -3,7 +3,8 @@
 
 import os
 import sys
-import subprocess
+import shutil
+import pysam
 import breakmer.utils as utils
 
 __author__ = "Ryan Abo"
@@ -39,6 +40,7 @@ class ParamManager(object):
 
         self.logging_name = 'breakmer.params'
         self.opts = {}
+        self.gene_annotations = None
         self.filter = None
         self.targets = {}
         self.paths = {}
@@ -71,11 +73,15 @@ class ParamManager(object):
         # Log all parameters passed in, warn for poor paths
         for param_key, param_value in self.opts.items():
             utils.log(self.logging_name, 'info', '%s = %s' % (param_key, param_value))
+
         # Log parameter overwritten by configuration file input values.
         for log_msg in log_msgs:
             utils.log(self.logging_name, log_msg[0], log_msg[1])
 
         self.set_targets()
+        self.gene_annotations = Anno()
+        self.gene_annotations.add_genes(self.get_param('gene_annotation_file'))
+
         self.paths['ref_data'] = os.path.abspath(os.path.normpath(self.opts['reference_data_dir']))  # Path to target reference sequence fast files.
         self.set_param('reference_fasta_dir', os.path.split(self.opts['reference_fasta'])[0])  # Path to genome fasta file.
 
@@ -98,9 +104,9 @@ class ParamManager(object):
             utils.log(self.logging_name, 'info', 'Starting the blat server.')
             return
 
-        # self.check_binaries()  # Check if Jellyfish and Cutadapt work.
+        self.check_binaries()  # Check if Jellyfish and Cutadapt work.
         # self.filter = resultfilter.ResultFilter(self.get_param('filterList'), self)  # Instantiate the filter class.
-        # self.set_insertsize_thresh()  # Set the expected insert size threshold from the properly mapped read
+        self.set_insertsize_thresh()  # Set the expected insert size threshold from the properly mapped read
 
     def parse_opts(self):
 
@@ -168,6 +174,54 @@ class ParamManager(object):
         for req in required:
             self.get_param(req, True)
 
+    def check_binaries(self):
+        # Binaries required for operation: blat, gfserver, gfclient, fatotwobit, cutadapt, jellyfish
+        binaries = ('blat',
+                    'gfserver',
+                    'gfclient',
+                    'fatotwobit',
+                    'cutadapt',
+                    'jellyfish')
+
+        for binary_name in binaries:
+            binary_path = self.get_param(binary_name)
+            binary_check = None
+            if binary_path is not None:
+                binary_check = utils.which(binary_path)
+            else:
+                binary_check = utils.which(binary_name)
+                self.set_param(binary_name, binary_check)
+            if not binary_check:
+                print 'Missing path/executable for', binary_name
+                sys.exit(2)
+            utils.log(self.logging_name, 'debug', '%s path = %s' % (binary_name, binary_check))
+
+        utils.log(self.logging_name, 'debug', 'All the required binaries have been check successfully!')
+
+        # Test cutadapt and jellyfish binaries
+        test_dir = os.path.join(self.paths['analysis'], 'binary_test')
+        test_fq = os.path.join(test_dir, 'test.fq')
+        if not os.path.exists(test_dir):
+            os.makedirs(test_dir)
+
+        fq_file = open(test_fq, 'w')
+        fq_file.write("@H91H9ADXX140327:1:2102:19465:23489/2\nCACCCCCACTGAAAAAGATGAGTATGCCTGCCGTGTGAACCATGTGACTTTACAATCTGCATATTGGGATTGTCAGGGAATGTTCTTAAAGATC\n+\n69EEEFBAFBFABCCFFBEFFFDDEEHHDGH@FEFEFCAGGCDEEEBGEEBCGBCCGDFGCBBECFFEBDCDCEDEEEAABCCAEC@>>BB?@C\n@H91H9ADXX140327:2:2212:12198:89759/2\nTCTTGTACTACACTGAATTCACCCCCACTGAAAAAGATGAGTATGCCTGCCGTGTGAACCATGTGACTTTACAATCTGCATATTGGGATTGTCAGGGA\n+\nA@C>C;?AB@BBACDBCAABBDDCDDCDEFCDDDDEBBFCEABCGDBDEEF>@GBGCEDGEDGCGFECAACFEGDFFGFECB@DFGCBABFAECEB?=")
+        fq_file.close()
+
+        clean_fq, return_code = utils.test_cutadapt(test_fq, self.get_param('cutadapt'), self.get_param('cutadapt_config_file'))
+        if clean_fq:
+            utils.log(self.logging_name, 'info', 'Test cutadapt ran successfully')
+            jfish_prgm, return_code = utils.test_jellyfish(self.opts['jellyfish'], clean_fq, test_dir)
+            if return_code != 0:
+                utils.log(self.logging_name, 'error', '%s unable to run successfully, exit code %s. Check installation and correct version.' % (jfish_prgm, str(return_code)))
+                sys.exit(2)
+            else:
+                utils.log(self.logging_name, 'info', 'Test jellyfish ran successfully')
+        else:
+            utils.log(self.logging_name, 'error', 'Cutadapt failed to run, exit code %s. Check installation and version.' % str(return_code))
+            sys.exit(2)
+        shutil.rmtree(test_dir)
+
     def set_targets(self):
 
         """Parse the targets bed file and store them in a dictionary. Limit to a gene
@@ -224,6 +278,40 @@ class ParamManager(object):
                 self.targets[name.upper()].append((chrm, int(bp1), int(bp2), name, feature))
         utils.log(self.logging_name, 'info', '%d targets' % len(self.targets))
 
+    def set_insertsize_thresh(self):
+
+        '''Store the insert sizes for a small number of "properly mapped" reads
+        and determine an upperbound cutoff to use to determine discordantly mapped read
+        pairs.
+
+        Args:
+            None
+        Returns:
+            None
+        Raises:
+            None
+        '''
+
+        nsample_reads = 100000
+        bam_file = pysam.Samfile(self.get_param('sample_bam_file'), 'rb')
+        test_reads = bam_file.fetch()
+        insert_sizes = []
+        read_iter = 0
+        for read in test_reads:
+            if read.is_duplicate or read.mapq == 0:
+                continue
+            proper_map = read.flag == 83 or read.flag == 99
+            if read.is_read1 and proper_map:  # Sample the read and store the insert size to its partner.
+                read_iter += 1
+                insert_sizes.append(abs(read.tlen))
+                if 'read_len' not in self.opts:  # Store the read length if it is not already stored.
+                    self.set_param('read_len', read.rlen)
+            if read_iter == nsample_reads:
+                break
+        insertsize_median = utils.median(insert_sizes)
+        insertsize_sd = utils.stddev(utils.remove_outliers(insert_sizes))  # Calculate the standard deviation of the sample read pairs insert sizes.
+        self.set_param('insertsize_thresh', insertsize_median + (5 * insertsize_sd))  # Set the threshold to be median + 5 standard deviations.
+
     def get_param(self, key, required=False):
         """Get the parameter value in the self.opts dictionary.
         If the parameer is required to be availale, then exit the program
@@ -261,3 +349,78 @@ class ParamManager(object):
         """
 
         self.opts[key] = value
+
+
+class Anno(object):
+
+    '''
+    '''
+
+    def __init__(self):
+
+        '''
+        '''
+
+        self.genes = {}
+        self.logging_name = 'breakmer.params.anno'
+
+    def add_genes(self, gene_fn):
+
+        '''
+        '''
+
+        utils.log(self.logging_name, 'info', 'Adding gene annotations from %s' % gene_fn)
+        gene_f = open(gene_fn, 'r')
+        gene_flines = gene_f.readlines()
+        for line in gene_flines[1:]:
+            line = line.strip()
+            linesplit = line.split()
+            chrom = linesplit[2]
+            start = int(linesplit[4])
+            end = int(linesplit[5])
+            geneid = linesplit[12]
+            if geneid in self.genes:
+                if start <= self.genes[geneid][1] and end >= self.genes[geneid][2]:
+                    self.genes[geneid] = [chrom, start, end]
+            else:
+                self.genes[geneid] = [chrom, start, end]
+        gene_f.close()
+
+    def add_regions(self, regions_bed_fn):
+
+        '''
+        '''
+
+        region_f = open(regions_bed_fn, 'rU')
+        region_lines = region_f.readlines()
+        for line in region_lines:
+            line = line.strip()
+            chrom, start, end, name = line.split()
+            if name not in self.genes:
+                self.genes[name] = [chrom, int(start), int(end)]
+        utils.log(self.logging_name, 'info', 'Adding in %d other target regions' % len(region_lines))
+
+    def set_gene(self, chrom, pos):
+
+        '''
+        '''
+
+        ann_genes = []
+        if chrom.find('chr') == -1:
+            chrom = 'chr' + str(chrom)
+
+        for g in self.genes:
+            gs = self.genes[g][1]
+            ge = self.genes[g][2]
+            if chrom == self.genes[g][0]:
+                if len(pos) == 1:
+                    if int(pos[0]) >= gs and int(pos[0]) <= ge:
+                        ann_genes.append(g)
+                        break
+            else:
+                # Find genes between pos1 and pos2
+                if (int(pos[0]) >= gs and int(pos[0]) <= ge) or (int(pos[1]) >= gs and int(pos[1]) <= ge):
+                    ann_genes.append(g)
+        if len(ann_genes) == 0:
+            ann_genes = ['intergenic']
+        return ",".join(ann_genes)
