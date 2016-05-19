@@ -1,13 +1,28 @@
 #! /usr/bin/local/python
+# -*- coding: utf-8 -*-
+
+'''
+BreaKmer utils module
+
+Function and classes used throughout the program - most of these are
+general purpose functions.
+'''
 
 import os
 import sys
 import glob
 import logging
-from Bio import SeqIO
 import subprocess
 import random
 import time
+import math
+from Bio import SeqIO
+
+
+__author__ = "Ryan Abo"
+__copyright__ = "Copyright 2015, Ryan Abo"
+__email__ = "ryanabo@gmail.com"
+__license__ = "MIT"
 
 
 def setup_logger(log_filename_path, name):
@@ -51,7 +66,7 @@ def setup_logger(log_filename_path, name):
 
 def log(name, level, msg):
 
-    """Write log message to the appropriate level.
+    '''Write log message to the appropriate level.
 
     Args:
         name (str):  The logger name, typically the module name.
@@ -59,7 +74,7 @@ def log(name, level, msg):
         msg (str):   The message to log.
     Returns:
         None
-    """
+    '''
 
     logger = logging.getLogger(name)
     if level == 'info':
@@ -104,7 +119,7 @@ def start_blat_server(params):
         # If no port is specified for this function, then randomly select a port between 8000-9500.
         if port is None:
             params.set_param('blat_port', random.randint(8000, 9500))
-            log(logging_name, 'info', 'Starting blat server on port %d on host %s.' % (params.get_param('blat_port'), params.get_param('blat_hostname')))    
+            log(logging_name, 'info', 'Starting blat server on port %d on host %s.' % (params.get_param('blat_port'), params.get_param('blat_hostname')))
     elif params.fnc_cmd == 'run':  # Start the blat server if it is not already running.
         if not params.get_param('start_blat_server'):  # Start blat server option is not set. Check that one is running, if not, start it.
             port = params.get_param('blat_port')
@@ -274,33 +289,33 @@ def run_jellyfish(fa_fn, jellyfish, kmer_size):
     return dump_fn
 
 
-def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn):
+def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, buffer_size):
 
     '''
     '''
 
     logger = logging.getLogger('breakmer.utils')
-    chrom, s, e, name, intervals = gene_coords
+    chrom, start_coord, end_coord, name, intervals = gene_coords
     marker_fn = get_marker_fn(target_fa_fn) 
 
     if not os.path.isfile(marker_fn):
         ref_d = SeqIO.to_dict(SeqIO.parse(ref_fa, 'fasta'))
         seq_str = ''
-        seq = ref_d[chrom].seq[(s - 200):(e + 200)]
+        seq = ref_d[chrom].seq[(start_coord - buffer_size):(end_coord + buffer_size)]
         if direction == "reverse":
             seq_str = str(seq.reverse_complement())
         else:
             seq_str = str(seq)
-        fa = open(target_fa_fn, 'w')
-        fa.write(">" + name + "\n" + seq_str + "\n")
-        fa.close()
-    
-        cmd = 'touch %s'%marker_fn
+        target_refseq_fasta_filename = open(target_fa_fn, 'w')
+        target_refseq_fasta_filename.write(">" + name + "\n" + seq_str + "\n")
+        target_refseq_fasta_filename.close()
+
+        cmd = 'touch %s' % marker_fn
         p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         output, errors = p.communicate()
         logger.info('Completed writing refseq fasta file %s, touching marker file %s' % (target_fa_fn, marker_fn))
     else:
-        logger.info('Refseq sequence fasta (%s) exists already' % target_fa_fn)
+        log(logging_name, 'info', 'Refseq sequence fasta (%s) exists already' % target_fa_fn)
 
     return target_fa_fn 
 
@@ -312,7 +327,7 @@ def setup_ref_data(setup_params):
 
     logger = logging.getLogger('breakmer.utils')
     genes = setup_params[0]
-    rep_mask, ref_fa, altref_fa_fns, ref_path, jfish_path, blat_path, kmer_size = setup_params[1]
+    rep_mask, ref_fa, ref_path, jfish_path, blat_path, kmer_size, buffer_size = setup_params[1]
 
     for gene in genes:
         chrom, bp1, bp2, name, intvs = gene
@@ -321,11 +336,11 @@ def setup_ref_data(setup_params):
             logger.info('Extracting repeat mask regions for target gene %s.' % name)
             setup_rmask(gene, gene_ref_path, rep_mask)
     
-        logger.info('Extracting refseq sequence for %s, %s:%d-%d' % (name, chr, bp1, bp2))
+        logger.info('Extracting refseq sequence for %s, %s:%d-%d' % (name, chrom, bp1, bp2))
         directions = ['forward', 'reverse']
         for direction in directions:
             target_fa_fn = os.path.join(gene_ref_path, name + '_' + direction + '_refseq.fa')
-            ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, direction, target_fa_fn)
+            ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, direction, target_fa_fn, buffer_size)
             run_jellyfish(ref_fn, jfish_path, kmer_size)
 
 def trim_coords(qual_str, min_qual):
@@ -448,9 +463,235 @@ def seq_trim(qual_str, min_qual):
             break
     return counter
 
+def is_number(value):
+
+    '''
+    '''
+
+    try:
+        float(value)
+        return True
+    except ValueError:
+        pass
+
+    try:
+        import unicodedata
+        unicodedata.numeric(value)
+        return True
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
+def test_cutadapt(fq_fn, cutadapt_binary, cutadapt_config):
+
+    '''
+    '''
+
+    fq_clean = os.path.basename(fq_fn).split('.')[0] + "_cleaned.fq"
+    fq_clean_fn = os.path.join(os.path.dirname(fq_fn), fq_clean)
+    cutadapt_params = stringify(cutadapt_config)
+    cutadapt_cmd = '%s %s %s %s > %s'%(sys.executable, cutadapt_binary, cutadapt_params, fq_fn, fq_clean_fn)
+    cutadapt_process = subprocess.Popen(cutadapt_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    output, errors = cutadapt_process.communicate()
+    return_code = cutadapt_process.returncode
+    if return_code != 0:
+        return (None, return_code)
+    else:
+        return (fq_clean_fn, return_code)
+
+def test_jellyfish(jellyfish_binary, fa_fn, analysis_dir):
+
+    '''
+    '''
+
+    version_cmd = '%s --version' % jellyfish_binary
+    version_process = subprocess.Popen(version_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    output, errors = version_process.communicate()
+    jellyfish_version = int(output.split()[1].split('.')[0])
+
+    kmer_size = 15
+    count_fn = os.path.join(analysis_dir, "test_jellyfish_counts")
+    count_cmd = '%s count -m %d -s %d -t %d -o %s %s'%(jellyfish_binary, kmer_size, 100000000, 8, count_fn, fa_fn)
+    count_process = subprocess.Popen(count_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    output, errors = count_process.communicate()
+    if count_process.returncode != 0:
+        return ("Jellyfish counts", count_process.returncode)
+
+    if jellyfish_version < 2:
+        count_fn += '_0'
+    dump_fn = os.path.join(analysis_dir, "test_jellyfish_dump")
+
+    dump_cmd = '%s dump -c -o %s %s'%(jellyfish_binary, dump_fn, count_fn)
+    dump_process = subprocess.Popen(dump_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    output, errors = dump_process.communicate()
+    if dump_process.returncode != 0:
+        return ("Jellyfish dump", dump_process.returncode)
+    return ("Jellyfish", 0)
+
+
+def which(program):
+
+    '''
+    '''
+
+    def is_exe(fpath):
+        return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+    fpath, fname = os.path.split(program)
+    if fpath:
+        if is_exe(program):
+            return program
+    else:
+        for path in os.environ["PATH"].split(os.pathsep):
+            path = path.strip('"')
+            exe_file = os.path.join(path, program)
+            if is_exe(exe_file):
+                return exe_file
+    return None
+
+
+def mean(lst):
+
+    '''Calculates the mean/average of a list of numbers
+    '''
+
+    summation = 0
+    for value in lst:
+        summation += value
+    return summation / len(lst)
+
+
+
+def median(lst):
+
+    '''Returns the median value of a list of values.
+
+    Args:
+        lst (list):       List of numeric values
+    Returns:
+        median (numeric): Median value from list.
+    '''
+
+    lst = sorted(lst)
+    if len(lst) < 1:
+        return None
+    if len(lst) % 2 == 1:
+        return lst[((len(lst) + 1) / 2) - 1]
+    else:
+        return float(sum(lst[(len(lst) / 2) - 1:(len(lst) / 2) + 1])) / 2.0
+
+
+def stddev(lst):
+
+    '''Calculates the standard deviation from the list of input  values.
+
+    Args:
+        lst (list): List of numeric values to calculate standard deviation
+    Returns:
+        Standard deviation (float)
+    Raises:
+        None
+    '''
+
+    summation = 0
+    avg = mean(lst)
+    for value in lst:
+        summation += pow((value - avg), 2)
+    return math.sqrt(summation / len(lst) - 1)
+
+
+def remove_outliers(lst):
+
+    '''
+    '''
+
+    qnt1 = percentile(lst, 0.25)
+    qnt2 = percentile(lst, 0.75)
+    intv_cut = 1.5 * (qnt2 - qnt1)
+    lst.sort()
+    i = 0
+    while lst[i] < (qnt1 - intv_cut):
+        i += 1
+    cut1 = i
+
+    lst.sort(reverse=True)
+    while lst[i] > (qnt2 + intv_cut):
+        i += 1
+
+    cut2 = len(lst) - i
+
+    lst.sort()
+    return lst[cut1:cut2]
+
+
+def percentile(lst, percent, key=lambda x: x):
+    
+    '''Find the percentile of a list of values.
+    Args:
+        lst (list):       A list of numeric values.
+        percent (float):  Percentage value ranging from 0.0 to 1.0.
+        key (lambda):     A function to compute a value from each element of N.
+    Returns:
+        percentile (numeric): The percentile of the values
+    '''
+
+    if not lst:
+        return None
+    lst.sort()
+    cut_val = (len(lst) - 1) * percent
+    low_val = math.floor(cut_val)
+    hi_val = math.ceil(cut_val)
+    if low_val == hi_val:
+        return key(lst[int(cut_val)])
+    d0 = key(lst[int(low_val)]) * (hi_val - cut_val)
+    d1 = key(lst[int(hi_val)]) * (cut_val - low_val)
+    return d0 + d1
+
 ################################
 # OLD
 ################################
+
+class fq_read:
+  def __init__(self, header, seq, qual, indel_only):
+    self.id = header
+    self.seq = str(seq)
+    self.qual = str(qual)
+    self.used = False
+    self.dup = False
+    self.indel_only = indel_only
+
+
+class FastqFile(object):
+  def __init__(self,f):
+    if isinstance(f,str):
+      f = open(f)
+      self._f = f
+  def __iter__(self):
+    return self
+
+  def next(self):
+    header, seq, qual_header, qual = [self._f.next() for _ in range(4)]
+    header = header.strip()
+    # inst,lane,tile,x,y_end = header.split(':')
+    seq = seq.strip()
+    qual = qual.strip()
+    '''
+    bc = None
+    y = y_end
+    if y.find('/') > -1:
+      y, end = y.split('/')
+    if y.find('#') > -1:
+      y, bc = y.split('#')
+     header_dict = {'inst':inst,
+                   'lane':int(lane),
+                   'tile':int(tile),
+                   'x':int(x),
+                   'y':int(y),
+                   'end':end,
+                   'bc': bc}
+    '''
+    return (header, seq, qual)
 
 def stringify(fn):
   # Turn file contents into a space delimited string
@@ -508,63 +749,6 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
 # #  os.remove(out_fn)
 #   return coords
 
-def test_cutadapt(fq_fn, cutadapt_bin, cutadapt_config):
-  fq_clean = os.path.basename(fq_fn).split('.')[0] + "_cleaned.fq"
-  fq_clean_fn = os.path.join(os.path.dirname(fq_fn), fq_clean)
-  cutadapt_params = stringify(cutadapt_config)
-  cmd = '%s %s %s %s > %s'%(sys.executable, cutadapt_bin, cutadapt_params, fq_fn, fq_clean_fn)
-  p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-  output, errors = p.communicate()
-  rc = p.returncode
-  if rc != 0:
-    return (None, rc)
-  else:
-    return (fq_clean_fn, rc) 
-
-def test_jellyfish(jfish_bin, fa_fn, analysis_dir):
-  cmd = '%s --version'%jfish_bin
-  p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-  output, errors = p.communicate()
-  jfish_version = int(output.split()[1].split('.')[0])
-
-  kmer_size = 15
-  count_fn = os.path.join(analysis_dir, "test_jellyfish_counts")
-  cmd = '%s count -m %d -s %d -t %d -o %s %s'%(jfish_bin, kmer_size, 100000000, 8, count_fn, fa_fn)
-  p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-  output, errors = p.communicate()
-  if p.returncode != 0:
-    return ("Jellyfish counts", p.returncode)
-
-  if jfish_version < 2: count_fn += '_0'
-  dump_fn = os.path.join(analysis_dir, "test_jellyfish_dump")
-  cmd = '%s dump -c -o %s %s'%(jfish_bin, dump_fn, count_fn)
-  p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,shell=True)
-  output, errors = p.communicate()
-  if p.returncode != 0:
-    return ("Jellyfish dump", p.returncode)
-  return ("Jellyfish", 0)
-
-def write_test_fq(fq_fn):
-  fq_f = open(fq_fn,'w')
-  fq_f.write("@H91H9ADXX140327:1:2102:19465:23489/2\nCACCCCCACTGAAAAAGATGAGTATGCCTGCCGTGTGAACCATGTGACTTTACAATCTGCATATTGGGATTGTCAGGGAATGTTCTTAAAGATC\n+\n69EEEFBAFBFABCCFFBEFFFDDEEHHDGH@FEFEFCAGGCDEEEBGEEBCGBCCGDFGCBBECFFEBDCDCEDEEEAABCCAEC@>>BB?@C\n@H91H9ADXX140327:2:2212:12198:89759/2\nTCTTGTACTACACTGAATTCACCCCCACTGAAAAAGATGAGTATGCCTGCCGTGTGAACCATGTGACTTTACAATCTGCATATTGGGATTGTCAGGGA\n+\nA@C>C;?AB@BBACDBCAABBDDCDDCDEFCDDDDEBBFCEABCGDBDEEF>@GBGCEDGEDGCGFECAACFEGDFFGFECB@DFGCBABFAECEB?=")
-  fq_f.close()
-
-def which(program):
-  def is_exe(fpath):
-    return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
-
-  fpath, fname = os.path.split(program)
-  if fpath:
-    if is_exe(program):
-      return program
-  else:
-    for path in os.environ["PATH"].split(os.pathsep):
-      path = path.strip('"')
-      exe_file = os.path.join(path, program)
-      if is_exe(exe_file):
-        return exe_file
-  return None
-
 def calc_contig_complexity(seq, N=3, w=6):
   cmers = [] 
   for i in range(len(seq)):
@@ -586,21 +770,6 @@ def count_nmers(seq, N):
     nmers[mer] += 1
   return nmers
 
-def is_number(s):
-  try:
-    float(s)
-    return True
-  except ValueError:
-    pass
- 
-  try:
-    import unicodedata
-    unicodedata.numeric(s)
-    return True
-  except (TypeError, ValueError):
-    pass
-  return False
-
 
 def filter_by_feature(brkpts, query_region, keep_intron_vars):
   in_filter = False
@@ -620,7 +789,7 @@ def filter_by_feature(brkpts, query_region, keep_intron_vars):
   return in_filter, span_filter
 
 
-def check_intervals(breakpts, query_region ):
+def check_intervals(breakpts, query_region):
   in_values = [False, [], []]
   span_values = [False, [], []]
   bp_in_interval = False
@@ -834,256 +1003,3 @@ def get_overlap_index(a,b):
 #  while a[i:] != b[:len(a[i:])]:
 #    i += 1
   return i-1
-
-
-# class params:
-#   def __init__(self,config_d):
-#     self.opts = config_d
-#     self.gene_annotations = None
-#     self.targets = {}
-#     self.paths = {}
-#     self.logger = logging.getLogger('root')
-#     self.repeat_mask = None
-#     self.set_params()
-
-#   def check_binaries(self):
-#     # Binaries required for operation: blat, gfserver, gfclient, fatotwobit, cutadapt, jellyfish
-#     binaries = ('blat', 'gfserver', 'gfclient', 'fatotwobit', 'cutadapt', 'jellyfish')
-#     for bin in binaries:
-#       if bin in self.opts:
-#         bin_path = self.opts[bin]
-#         bin_check = which(bin_path)
-#       else:
-#         bin_check = which(bin)
-#         self.opts[bin] = bin_check
-#       if not bin_check:
-#         print 'Missing path/executable for', bin
-#         sys.exit(2)
-#       self.logger.debug('%s path = %s'%(bin, bin_check))
-
-#     self.logger.debug('All the required binaries have been check successfully!')
-
-#     # Test cutadapt and jellyfish binaries
-#     test_dir = os.path.join(self.paths['analysis'], 'bin_test')
-#     test_fq = os.path.join(test_dir, 'test.fq')
-#     if not os.path.exists(test_dir):
-#       os.makedirs(test_dir)
-#     write_test_fq(test_fq)
-#     clean_fq, rc = test_cutadapt(test_fq, self.opts['cutadapt'], self.opts['cutadapt_config_file'])
-#     if clean_fq:
-#       self.logger.debug('Test cutadapt ran successfully')
-#       jfish_prgm, rc = test_jellyfish(self.opts['jellyfish'], clean_fq, test_dir)
-#       if rc != 0:
-#         self.logger.debug('%s unable to run successfully, exit code %s. Check installation and correct version.'%(jfish_prgm, str(rc)))
-#         sys.exit(2)
-#       else:
-#         self.logger.debug('Test jellyfish ran successfully')
-#     else:
-#       self.logger.debug('Cutadapt failed to run, exit code %s. Check installation and version.'%str(rc))
-#       sys.exit(2)
-
-  # def set_targets(self,gene_list):
-  #   region_list = None
-  #   if gene_list:
-  #     region_list = []
-  #     hl = open(gene_list,'r')
-  #     for line in hl.readlines():
-  #       line = line.strip()
-  #       region_list.append(line.upper())
-
-  #   self.logger.info('Parsing target list')
-  #   # Gene file
-  #   # TODO: Check to make sure there aren't duplicate genes.
-  #   targets_f = open(self.opts['targets_bed_file'],'rU')
-  #   cur_region = ['',[]]
-  #   for target in targets_f.readlines():
-  #     # Each target is formatted like a bed, chr bp1 bp2 name
-  #     target = target.strip()
-  #     targetsplit = target.split()
-  #     chrm, bp1, bp2, name = targetsplit[0:4]
-  #     if region_list:
-  #       if name.upper() not in region_list: continue
-
-  #     feature = None
-  #     if len(targetsplit) > 4: feature = targetsplit[4]
-
-  #     if name.upper() not in self.targets: self.targets[name.upper()] = []
-  #     self.targets[name.upper()].append((chrm,int(bp1),int(bp2),name,feature))
-  #   self.logger.info('%d targets'%len(self.targets))
-
-  # def set_params(self):
-  #   self.logger.info('Setting up parameters')
-
-  #   if 'indel_size' not in self.opts: self.opts['indel_size'] = 0
-  #   var_filter = self.opts['var_filter']
-  #   if var_filter == 'all':
-  #     self.opts['var_filter'] = ['indel','rearrangement','trl']
-  #   else:
-  #     self.opts['var_filter'] = var_filter.split(",")
-  #     if 'indel' in  self.opts['var_filter'] or 'rearrangement' in self.opts['var_filter'] or 'trl' in self.opts['var_filter']:
-  #       self.logger.info('Variant filters %s set, only reporting these variants'%','.join(self.opts['var_filter']))
-  #     else:
-  #       self.logger.debug('Variant filter options %s are not valid, using all'%','.join(self.opts['var_filter']))
-  #       self.opts['var_filter'] = ['indel','rearrangement','trl']
-
-  #   # Log all parameters passed in, warn for poor paths
-  #   for param in self.opts:
-  #     value = self.opts[param]
-  #     self.logger.info('%s = %s'%(param,value))
-
-  #   self.set_targets(self.opts['gene_list'])
-  #   # Set gene annotations
-  #   self.gene_annotations = anno()
-  #   self.gene_annotations.add_genes(self.opts['gene_annotation_file'])
-
-  #   if 'other_regions_file' in self.opts:
-  #     self.gene_annotations.add_regions(self.opts['other_regions_file'])
-
-  #   # Setup analysis directories
-  #   self.paths['analysis'] = os.path.abspath(os.path.normpath(self.opts['analysis_dir']))
-  #   self.paths['output'] = os.path.join(self.paths['analysis'],'output')
-  #   if 'targets_dir' in self.opts:
-  #     self.paths['targets'] = os.path.abspath(os.path.normpath(self.opts['targets_dir']))
-  #   else:
-  #     self.paths['targets'] = os.path.join(self.paths['analysis'],'targets')
-  #   self.paths['ref_data'] = os.path.abspath(os.path.normpath(self.opts['reference_data_dir']))
-
-  #   for path in self.paths:
-  #     self.logger.info('Creating %s directory (%s)'%(path,self.paths[path]))
-  #     if not os.path.exists(self.paths[path]): os.makedirs(self.paths[path])
-
-  #   self.check_binaries() 
-
-  #   # Set repeats if specified
-  #   if not self.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.opts:
-  #     self.logger.info('Storing all repeats by chrom from file %s'%self.opts['repeat_mask_file'])
-  #     self.repeat_mask = setup_rmask_all(self.opts['repeat_mask_file'])
-
-  #   # Setup alternative reference sequence files if they were passed in.
-  #   if 'alternate_reference_fastas' in self.opts:
-  #     self.logger.info('Alternate reference fastas listed in configuration %s'%self.opts['alternate_reference_fastas'])
-  #     self.opts['alternate_reference_fastas'] = self.opts['alternate_reference_fastas'].split(',')
-  #     # Check for altref 2bit files 
-  #     for fn in self.opts['alternate_reference_fastas']:
-  #       twobit_fn = os.path.splitext(fn)[0] + '.2bit'
-  #       if not os.path.exists(twobit_fn):
-  #         self.logger.info('Creating 2bit from %s alternate reference fasta'%fn)
-  #         # Create 2bit requires faToTwoBit
-  #         curdir = os.getcwd()
-  #         os.chdir(os.path.dirname(fn))
-  #         cmd = '%s %s %s'%(self.opts['fatotwobit'], fn, twobit_fn)
-  #         self.logger.info('fatotwobit command %s'%cmd)
-  #         p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-  #         output, errors = p.communicate()
-  #         os.chdir(curdir)
-  #   else:
-  #     self.logger.info('No alternate reference fasta files listed in configuration.')
-
-
-  # def get_kmer_size(self): 
-  #   return int(self.opts['kmer_size'])
-
-  # def get_min_segment_length(self, type):
-  #   return int(self.opts[type + '_minseg_len'])
-
-  # def get_sr_thresh(self, type):
-  #   if type == 'min':
-  #     return min(self.get_sr_thresh('trl'), self.get_sr_thresh('rearrangement'), self.get_sr_thresh('indel'))
-  #   else: 
-  #     if type == 'trl': 
-  #       return int(self.opts['trl_sr_thresh'])
-  #     elif type == 'rearrangement':
-  #       return int(self.opts['rearr_sr_thresh'])
-  #     elif type == 'indel':
-  #       return int(self.opts['indel_sr_thresh'])
-
-
-class fq_read:
-  def __init__(self, header, seq, qual, indel_only):
-    self.id = header
-    self.seq = str(seq)
-    self.qual = str(qual)
-    self.used = False
-    self.dup = False
-    self.indel_only = indel_only
-
-
-class FastqFile(object):
-  def __init__(self,f):
-    if isinstance(f,str):
-      f = open(f)
-      self._f = f
-  def __iter__(self):
-    return self
-
-  def next(self):
-    header, seq, qual_header, qual = [self._f.next() for _ in range(4)]
-    header = header.strip()
-    # inst,lane,tile,x,y_end = header.split(':')
-    seq = seq.strip()
-    qual = qual.strip()
-    '''
-    bc = None
-    y = y_end
-    if y.find('/') > -1:
-      y, end = y.split('/')
-    if y.find('#') > -1:
-      y, bc = y.split('#')
-     header_dict = {'inst':inst,
-                   'lane':int(lane),
-                   'tile':int(tile),
-                   'x':int(x),
-                   'y':int(y),
-                   'end':end,
-                   'bc': bc}
-    '''
-    return (header, seq, qual)
-
-
-class anno:
-  def __init__(self):
-    self.genes = {}
-    self.logger = logging.getLogger('root')
-
-  def add_genes(self, gene_fn):
-    self.logger.info('Adding gene annotations from %s'%gene_fn)
-    gene_f = open(gene_fn,'r')
-    gene_flines = gene_f.readlines()
-    for line in gene_flines[1:]:
-      line = line.strip()
-      linesplit = line.split()
-      chrom = linesplit[2]
-      start = int(linesplit[4])
-      end = int(linesplit[5])
-      geneid = linesplit[12]
-      if geneid in self.genes:
-        if start <= self.genes[geneid][1] and end >= self.genes[geneid][2]: self.genes[geneid] = [chrom,start,end]
-      else: self.genes[geneid] = [chrom,start,end]
-    gene_f.close()
-
-  def add_regions(self, regions_bed_fn):
-    region_f = open(regions_bed_fn, 'rU')
-    region_lines = region_f.readlines()
-    for line in region_lines:
-      line = line.strip()
-      chrom, start, end, name = line.split()
-      if name not in self.genes: self.genes[name] = [chrom,int(start),int(end)]
-    self.logger.info('Adding in %d other target regions'%len(region_lines))
-  
-  def set_gene(self, chrom, pos):
-    ann_genes = []
-    if chrom.find('chr') == -1: chrom = 'chr'+str(chrom) 
-    for g in self.genes:
-      gs = self.genes[g][1]
-      ge = self.genes[g][2]
-      if chrom == self.genes[g][0]:
-        if len(pos) == 1:
-          if int(pos[0]) >= gs and int(pos[0]) <= ge:
-            ann_genes.append(g)
-            break
-        else:
-          # Find genes between pos1 and pos2
-          if (int(pos[0]) >= gs and int(pos[0]) <= ge) or (int(pos[1]) >= gs and int(pos[1]) <= ge):
-            ann_genes.append(g)
-    if len(ann_genes) == 0: ann_genes = ['intergenic']
-    return ",".join(ann_genes)
