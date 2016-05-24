@@ -131,21 +131,21 @@ class RunTracker(object):
             utils.log(self.logging_name, 'info', 'Analyzing %s' % trgt.name)
 
             # Write reference sequence fasta for gene if it doesn't exist.
-            if not self.params.opts['preset_ref_data']:
-                trgt.set_ref_data()
+            # if not self.params.opts['preset_ref_data']:
+            trgt.set_ref_data()
 
             if not trgt.get_sv_reads():
                 continue
 
             trgt.compare_kmers()  # Get reference and case kmers
             trgt.resolve_sv()  # Build contigs and blat them against the reference genome
-            self.summary_header, trgt_summary = trgt.get_summary()
-            self.summary[trgt.name] = trgt_summary
+            # self.summary_header, trgt_summary = trgt.get_summary()
+            # self.summary[trgt.name] = trgt_summary
 
-            utils.log(self.logging_name, 'info', '%s summary\n%s\n%s' % (trgt.name, self.summary_header, trgt_summary))
+            # utils.log(self.logging_name, 'info', '%s summary\n%s\n%s' % (trgt.name, self.summary_header, trgt_summary))
             if trgt.has_results():
                 trgt.write_results()
-                self.results.extend(trgt.results)
+                self.results.extend(trgt.formatted_results)
             else:
                 trgt.rm_output_dir()
 
@@ -166,30 +166,40 @@ class RunTracker(object):
         '''
         '''
 
-        result_files = {}
-        for res in self.results:
-            tag = res[6]
-            if tag not in result_files:  
-                header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
+        res_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_svs.out")
+        result_file = open(res_fn, 'w')
+        header = "\t".join(['genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
+        result_file.write(header)
 
-                res_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_" + tag + "_svs.out")
+        for result_str in self.results:
+            utils.log(self.logging_name, 'info', 'Writing results to file: %s' % res_fn)
+            result_file.write(result_str)
+        result_file.close()
 
-                utils.log(self.logging_name, 'info', 'Writing %s output file %s' % (tag, res_fn))
-                result_files[tag] = open(res_fn, 'w')
-                if not self.params.opts['no_output_header']:
-                    result_files[tag].write(header)
-                result_files[tag].write("\t".join([str(x) for x in res]) + "\n")
+        # result_files = {}
+        # for res in self.results:
+        #     tag = res[6]
+        #     if tag not in result_files:  
+        #         header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
 
-        for result_filename in result_files:
-            result_files[result_filename].close()
+        #         res_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_" + tag + "_svs.out")
 
-        summary_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_summary.out")
-        summary_f = open(summary_fn, 'w')
-        utils.log(self.logging_name, 'info', 'Writing summary file to %s' % summary_fn)
-        summary_f.write(self.summary_header+"\n")
+        #         utils.log(self.logging_name, 'info', 'Writing %s output file %s' % (tag, res_fn))
+        #         result_files[tag] = open(res_fn, 'w')
+        #         if not self.params.opts['no_output_header']:
+        #             result_files[tag].write(header)
+        #         result_files[tag].write("\t".join([str(x) for x in res]) + "\n")
 
-        keys = self.summary.keys()
-        keys.sort()
-        for gene in keys:
-            summary_f.write(self.summary[gene] + "\n")
-        summary_f.close()
+        # for result_filename in result_files:
+        #     result_files[result_filename].close()
+
+        # summary_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_summary.out")
+        # summary_f = open(summary_fn, 'w')
+        # utils.log(self.logging_name, 'info', 'Writing summary file to %s' % summary_fn)
+        # summary_f.write(self.summary_header+"\n")
+
+        # keys = self.summary.keys()
+        # keys.sort()
+        # for gene in keys:
+        #     summary_f.write(self.summary[gene] + "\n")
+        # summary_f.close()
