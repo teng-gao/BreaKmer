@@ -294,7 +294,7 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
     '''
     '''
 
-    logger = logging.getLogger('breakmer.utils')
+    logging_name = 'breakmer.utils'
     chrom, start_coord, end_coord, name, intervals = gene_coords
     marker_fn = get_marker_fn(target_fa_fn) 
 
@@ -310,10 +310,10 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
         target_refseq_fasta_filename.write(">" + name + "\n" + seq_str + "\n")
         target_refseq_fasta_filename.close()
 
-        cmd = 'touch %s' % marker_fn
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        output, errors = p.communicate()
-        logger.info('Completed writing refseq fasta file %s, touching marker file %s' % (target_fa_fn, marker_fn))
+        touch_cmd = 'touch %s' % marker_fn
+        touch_process = subprocess.Popen(touch_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = touch_process.communicate()
+        log(logging_name, 'info', 'Completed writing refseq fasta file %s, touching marker file %s' % (target_fa_fn, marker_fn))
     else:
         log(logging_name, 'info', 'Refseq sequence fasta (%s) exists already' % target_fa_fn)
 
@@ -412,7 +412,7 @@ def get_fastq_reads(fn, sv_reads):
                 fq_recs[seq] = []
             fq_recs[seq].append(fr)
     filt_fq.close()
-    return filtered_fq_fn, fq_recs, read_len
+    return filtered_fq_fn, fq_recs
 
 
 def fq_line(read, indel_only, min_len, trim=True):
@@ -462,6 +462,24 @@ def seq_trim(qual_str, min_qual):
         if counter == len(qual_str):
             break
     return counter
+
+def get_clip_coords(read_quals, read_cigar):
+
+    '''
+    '''
+
+    clip_coords = [0, len(read_quals)]
+    coords = [0, 0]
+    for i, cigar_tuple in enumerate(read_cigar):
+        code, clen = cigar_tuple
+        if (code != 2) and (code != 4):
+            coords[1] += clen
+        if code == 4:
+            if i == 0: 
+                coords[0] = clen
+                coords[1] += clen
+        clip_coords = coords
+    return clip_coords
 
 def is_number(value):
 
@@ -719,6 +737,31 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
     return True
   else:
     return False  
+
+def run_blat(realign_value_dict, result_fn, query_fn, scope):
+
+    '''
+    '''
+
+    logging_name = 'breakmer.utils'
+    if not os.path.isfile(result_fn):
+        realign_cmd = None
+        if scope == 'genome':
+            log(logging_name, 'info', 'Running blat %s, storing results in %s' % (realign_value_dict['binary'], result_fn))
+            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+        else:
+            log(logging_name, 'info', 'Running blat %s, storing results in %s'%(realign_value_dict['binary'], result_fn))
+            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=10 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            # cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=1 -minMatch=1 -repeats=lower -noHead %s %s %s'%(self.params.opts['blat'], db, self.contig_fa_fn, self.query_res_fn)
+
+        log(logging_name, 'info', 'Blat system command %s' % realign_cmd)
+        realign_process = subprocess.Popen(realign_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+        output, errors = realign_process.communicate()
+        log(logging_name, 'info', 'Blat output %s' % output)
+        if errors != '':
+            log(logging_name, 'info', 'Blat errors %s' % errors)
+    else:
+        log(logging_name, 'info', 'Blat already run, results file %s exists, continuing' % result_fn)
 
 # def get_altref_genecoords(blat_path, altref_fa, query_fa_fn, chr, out_fn): 
 #   altref_twobit = os.path.splitext(altref_fa)[0] + ".2bit"
