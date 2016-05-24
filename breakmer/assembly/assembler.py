@@ -7,7 +7,7 @@ BreaKmer assembler module
 Assembles contigs
 '''
 
-import sys
+
 from collections import OrderedDict
 import breakmer.utils as utils
 import breakmer.assembly.utils as assembly_utils
@@ -117,42 +117,41 @@ def setup_contigs(kmer_seq, fq_recs, kmer_len, kmer_tracker, contig_buffer):
                              'nreads': nreads}
         contig_buffer.add_used_read(read.id)
         if not contig_unit: 
-            contig_unit = contig.AssemblyContig(kmer_unit, read_align_values)
+            contig_unit = contig.Contig(kmer_unit, read_align_values)
             contig_buffer.add_contig(read, contig_unit)
         else:
             contig_unit.check_read(kmer_seq, kmer_tracker.get_count(kmer_seq), read, kmer_pos, nreads, kmer_tracker.kmer_seqs, 'setup')
     if contig_unit: 
         contig_unit.finalize(fq_recs, kmer_tracker, contig_buffer, 'setup')
 
-def same_reads(seq1, seq2):
-  same = False
-  aln = olc.nw(seq1, seq2)
-  if aln[3] == 0 and aln[5] == 0 and aln[6] > 0.95*(len(seq1)):
-    same = True
-  return same
-
+# def same_reads(seq1, seq2):
+#   same = False
+#   aln = olc.nw(seq1, seq2)
+#   if aln[3] == 0 and aln[5] == 0 and aln[6] > 0.95*(len(seq1)):
+#     same = True
+#   return same
 
 # Check if seq2 is a subseq of seq1 
-def subseq(seq1, seq2): 
-  aln = olc.nw(seq2, seq1)
-  seq2_sub = (False,None)
-  if aln[2] == len(seq2) and aln[3] == 0 and aln[6] >= (0.85*(len(seq2))): 
-    if len(seq2) < len(seq1):
-      seq2_sub = (True,None)
-    else:
-      seq2_sub = (True,aln[6]) 
-  else:
-    seq2_sub = (False,aln[6])
-  return seq2_sub
+# def subseq(seq1, seq2): 
+#   aln = olc.nw(seq2, seq1)
+#   seq2_sub = (False,None)
+#   if aln[2] == len(seq2) and aln[3] == 0 and aln[6] >= (0.85*(len(seq2))): 
+#     if len(seq2) < len(seq1):
+#       seq2_sub = (True,None)
+#     else:
+#       seq2_sub = (True,aln[6]) 
+#   else:
+#     seq2_sub = (False,aln[6])
+#   return seq2_sub
 
 
-def sim_seqs(seq1, b_read): 
-  sim = False
-  if not b_read.redundant: 
-    seq2 = b_read.read.seq
-    if same_reads(seq1, seq2) or subseq(seq2, seq1): 
-      sim = True 
-  return sim
+# def sim_seqs(seq1, b_read): 
+#   sim = False
+#   if not b_read.redundant: 
+#     seq2 = b_read.read.seq
+#     if same_reads(seq1, seq2) or subseq(seq2, seq1): 
+#       sim = True 
+#   return sim
 
 
 class KmerTracker(object):
@@ -260,6 +259,7 @@ class ContigBuffer(object):
 
         '''Add read to contigs dict with contig object it is connected to.
         Set key to read ID and value to the contig object. Set the read used to True.
+
         Args:
             read:   fq_read object
             contig: Contig object.
@@ -344,93 +344,3 @@ class ContigBuffer(object):
         del_used = filter(lambda x: x in fq_reads, list(self.used_reads))
         map(fq_reads.__delitem__, del_used)
         self.used_reads = set()
-
-# class buffer:
-#   def __init__(self):
-#     self.used_mers = set()
-#     self.used_reads = set()
-#     self.contigs = OrderedDict()
-#   #*******************************************
-#   def add_contig(self, read, contig):
-#     if read.id not in self.contigs and not read.used:
-#       self.contigs[read.id] = contig
-#       read.used = True
-#   #*******************************************
-#   def remove_contig(self, read_id):
-#     if read_id in self.contigs:
-#       del self.contigs[read_id]
-#   #*******************************************
-#   def get_contig(self):
-#     read_id = self.contigs.keys()[0]
-#     ct = self.contigs[read_id]
-#     del self.contigs[read_id]
-#     return ct
-#   #*******************************************
-#   def add_used_read(self, read_id):
-#     self.used_reads.add(read_id)
-#   #*******************************************
-#   def add_used_mer(self, mer):
-#     self.used_mers.add(mer)
-#   #*******************************************
-#   def remove_kmers(self, skmers):
-#     map(skmers.remove_mer, list(self.used_mers))
-#     self.used_mers = set()
-#   #*******************************************
-#   def remove_reads(self, fq_reads):
-#     del_used = filter(lambda x: x in fq_reads, list(self.used_reads))
-#     map(fq_reads.__delitem__, del_used)
-#     self.used_reads = set()
-#   #*******************************************
-
-
-# class kmer:
-#   def __init__(self,val,count):
-#     self.value = val
-#     self.count = count
-#     self.done = False
-
-# class kmers: 
-#   def __init__(self):
-#     self.s = []
-#   #*******************************************
-#   def add_kmer(self,mer,count):
-#     if len(set(mer)) > 1:
-#       self.s.append((int(count), mer, kmer(mer,count)))
-#   #*******************************************
-#   def get_all_kmer_values(self):
-#     mers_sorted = sorted(self.s, key=lambda x: (int(x[0]), x[1]), reverse=True)
-#     am = akmers()
-#     for mer in mers_sorted:
-#       am.add_mer(mer[1], mer[0])
-#     return am
-#   #*******************************************
-
-# class akmers:
-#   def __init__(self):
-#     self.mers = OrderedDict()
-#     self.smers_set = set()
-#   #*******************************************
-#   def get_mers(self):
-#     return set(self.mers.keys())
-#   #*******************************************
-#   def update_smer_set(self):
-#     self.smers_set = set(self.mers.keys())
-#   #*******************************************
-#   def add_mer(self, mer, count):
-#     self.mers[mer] = count
-#    #*******************************************
-#   def remove_mer(self, mer):
-#     del self.mers[mer]
-#   #*******************************************
-#   def has_mers(self):
-#     if len(self.mers) > 0 and max(self.mers.values()) > 1:
-#       return True
-#     else:
-#       return False
-#   #*******************************************
-#   def get_count(self, mer):
-#     return self.mers[mer]
-#   #*******************************************
-
-
-
