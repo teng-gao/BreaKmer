@@ -10,6 +10,9 @@ A google groups forum page is also available for posting issues: https://groups.
 News
 ====
 
+#### May 24, 2016
+Major updates to structure of the code, it is much more modularized and succinct. Improvements should be much easier now. I have merged the different output types into a single output file ("_svs.out") and taken out the "nkmers" and "repeat_overlap" columns. The contig IDs are now labelled with the target region name and there is a "sv_subtype" included in the subtype for the different type of rearrangement categories. There is also no concatentation of 'chr' onto the chromosome names for indels or rearrangements as before. There were a few other minor algorithmic changes to the processing of realignment calls and how the discordant reads are being extracted and matched to the variant calls. These will continue to be modified, as the ultimate goal is to call variants with splitread and discordant read evidence jointly rather than in serial. Currently, the code is stable and works on a few test cases; however, the basic filters that were in place need to be reimplemented.
+
 #### May 19, 2016
 All BreaKmer functionality is currently working on a single test sample (a translocation) with updates and changes. Work is progressing to clean the code and organize into modules and remove PEP8 incompatibilities.
 

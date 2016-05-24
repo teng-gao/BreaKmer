@@ -1,6 +1,14 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [0.0.4-beta] - 2016-05-24
+    - Many small modifications and code rearrangements. Caller, realignment, and results modules were created to contain code for their respective functions. Realignment functionality and calling functionality has been modularized. Running blat function has been moved to utils module. Results have also been placed in a module and simplified.
+    - Removed "nkmers" and "repeat_overlap" output columns.
+    - Currently suspended the summary output file.
+    - Decoupled the filtering process from the calling process. The filters need to be reimplemented.
+    - Merged the two Contig classes into a single class.
+    - Removed 'chr' concatenation to output chromosome breakpoint strings.
+
 ## [0.0.4-beta] - 2016-05-19
     - Removed parameter 'var_filter'. All variants will be reported and the user can filter beyond that.
     - Major bug fix in function to determine the blat hits that make up a contig sequence. This should allow for more sensitive calling where a contig sequence contains multiple breakpoint events.
