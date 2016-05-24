@@ -10,12 +10,11 @@ BreaKmer target module
 import sys
 import os
 import subprocess
-import logging
 import shutil
 import pysam
 import breakmer.utils as utils
 import breakmer.assembly.assembler as assembler
-import breakmer.assembly.contig as contig
+import breakmer.caller.sv_caller2 as sv_caller
 
 __author__ = "Ryan Abo"
 __copyright__ = "Copyright 2015, Ryan Abo"
@@ -31,7 +30,9 @@ def pe_meta(aread):
     # First check if read is from a proper paired-end mapping --> <--
     proper_map = False
     overlap_reads = False
-    if (((aread.flag == 83) or (aread.flag == 147)) and (aread.tlen < 0)) or (((aread.flag == 99) or (aread.flag == 163)) and (aread.tlen > 0)):
+    proper_map1 = ((aread.flag == 83) or (aread.flag == 147)) and (aread.tlen < 0)
+    proper_map2 = ((aread.flag == 99) or (aread.flag == 163)) and (aread.tlen > 0)
+    if proper_map1 or proper_map2:
         proper_map = True
         if abs(aread.tlen) < (2 * len(aread.seq)):
             overlap_reads = True
@@ -117,15 +118,16 @@ class TargetManager(object):
         self.disc_reads = None
         self.sv_reads = None
         self.cleaned_read_recs = None
-        self.read_len = 0
         self.kmer_clusters = []
         self.kmers = {}
+        self.contigs = []
         self.results = []
+        self.formatted_results = []
         self.svs = {'trl':[0, '-'], 'indel':[0, ''], 'rearrangement':[0, '']}
-        self.logger = logging.getLogger('breakmer.processor.target')
         self.target_intervals = intervals
         self.repeat_mask = None
         self.logging_name = 'breakmer.processor.target'
+        self.call_manager = sv_caller.SVCallManager(params)
         self.setup()
 
     def setup(self):
@@ -216,7 +218,7 @@ class TargetManager(object):
 
         check = True
         if not self.clean_reads('sv'):
-            self.rm_output_dir()
+            shutil.rmtree(self.paths['output'])
             check = False
         return check
 
@@ -267,7 +269,6 @@ class TargetManager(object):
         valid_reads = []
 
         for aligned_read in aligned_reads:
-            # print aligned_read
 
             if aligned_read.is_duplicate or aligned_read.is_qcfail:  # Skip duplicates and failures
                 continue
@@ -293,71 +294,63 @@ class TargetManager(object):
             if aligned_read.qname in pair_indices:
                 pair_indices[aligned_read.qname][int(aligned_read.is_read1)] = len(valid_reads) - 1
 
-        # pair_indices, valid_reads = process_reads(areads, read_d, bamfile)
+            # If read is mapped and mate is unmapped
+            if (aligned_read.pos >= self.start and aligned_read.pos <= self.end) and aligned_read.mapq > 0 and aligned_read.mate_is_unmapped:
+                read_d['unmapped_keep'].append(aligned_read.qname)
+        # pair_indices, valid_reads = process_reads(areads, read_d, bamfile)  # Deprecated
 
-        # for aread, proper_map, overlap_reads in valid_reads:
+        # for aread, proper_map, overlap_reads in valid_reads:  # Deprecated
             # Only take soft-clips from outer regions of properly mapped reads, take all others
             if (aligned_read.cigar is None) or (len(aligned_read.cigar) <= 1):  # cigar is a list of tuples 
                 continue
 
         # if aligned_read.cigar and len(aligned_read.cigar) > 1:  
-            tc_coords = utils.trim_coords(aligned_read.qual, 3)  # Identify the read positions with qual > 2
-            sc_coords = [0, len(aligned_read.qual)]
-            coords = [0, 0]
-            for i in range(len(aligned_read.cigar)):
-                code, clen = aligned_read.cigar[i]
-                if (code != 2) and (code != 4):
-                    coords[1] += clen
-                if code == 4:
-                    if i == 0: 
-                        coords[0] = clen
-                        coords[1] += clen
-                sc_coords = coords
+            trim_coords = utils.trim_coords(aligned_read.qual, 3)  # Identify the read positions with qual > 2
+            clip_coords = utils.get_clip_coords(aligned_read.qual, aligned_read.cigar)
 
             # Only keep reads that have a soft clip in sequence that has not been trimmed 
             # due to low quality sequence.           
-            sc_seq = {'clipped':[], 'buffered':[]}
-            if sc_coords[0] > tc_coords[0] or sc_coords[1] < tc_coords[1]:
-                clip_coords = [0, 0]
-                s, e = sc_coords
-                add_sc = [False, False]
-                indel_only = False
-                start_sc = s > 0
-                end_sc = e < len(aligned_read.qual)
-                seq = aligned_read.seq
-                ll = len(seq)
-                if start_sc and end_sc:
-                    add_sc = [True, True]
-                else:
-                    if start_sc: 
-                        add_sc[0] = True
-                        clip_coords = [0, s]
-                        if overlap_reads and aligned_read.is_reverse: 
-                            mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
-                            add_sc[0] = self.check_pair_overlap(mate_seq, aligned_read, [0, s], 'back')
-                        if proper_map:
-                            indel_only = aligned_read.is_reverse
-                    elif end_sc: 
-                        clip_coords = [e, ll]
-                        add_sc[1] = True
-                        if overlap_reads and not aligned_read.is_reverse: 
-                            mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
-                            add_sc[1] = self.check_pair_overlap(mate_seq, aligned_read, [e, ll], 'front')
-                        if proper_map:
-                            indel_only = (indel_only and False) if aligned_read.is_reverse else (indel_only and True)
-                final_add = add_sc[0] or add_sc[1]
-                if add_sc[0]:
-                    sc_seq['buffered'].append(aligned_read.seq[0:(s + kmer_size)])
-                    sc_seq['clipped'].append(aligned_read.seq[0:s])
-                if add_sc[1]:
-                    sc_seq['buffered'].append(seq[(e - kmer_size):ll])
-                    sc_seq['clipped'].append(seq[e:ll])
-                if final_add:
-                    read_d['sv'][utils.get_seq_readname(aligned_read)] = (aligned_read, sc_seq, clip_coords, indel_only)
+            # if clip_coords[0] > trim_coords[0] or clip_coords[1] < trim_coords[1]:  # Deprecated
+            if clip_coords[0] <= trim_coords[0] and clip_coords[1] >= trim_coords[1]:
+                continue
 
-            # If read is mapped and mate is unmapped
-            if (aligned_read.pos >= self.start and aligned_read.pos <= self.end) and aligned_read.mapq > 0 and aligned_read.mate_is_unmapped:
-                read_d['unmapped_keep'].append(aligned_read.qname)
+            sc_seq = {'clipped':[], 'buffered':[]}
+            new_clip_coords = [0, 0]
+            start_coord, end_coord = clip_coords
+            add_sc = [False, False]
+            indel_only = False
+            start_sc = start_coord > 0
+            end_sc = end_coord < len(aligned_read.qual)
+            seq = aligned_read.seq
+
+            if start_sc and end_sc:
+                add_sc = [True, True]
+            else:
+                if start_sc: 
+                    add_sc[0] = True
+                    new_clip_coords = [0, start_coord]
+                    if overlap_reads and aligned_read.is_reverse: 
+                        mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
+                        add_sc[0] = self.check_pair_overlap(mate_seq, aligned_read, [0, start_coord], 'back')
+                    if proper_map:
+                        indel_only = aligned_read.is_reverse
+                elif end_sc: 
+                    new_clip_coords = [end_coord, len(seq)]
+                    add_sc[1] = True
+                    if overlap_reads and not aligned_read.is_reverse: 
+                        mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
+                        add_sc[1] = self.check_pair_overlap(mate_seq, aligned_read, [end_coord, len(seq)], 'front')
+                    if proper_map:
+                        indel_only = (indel_only and False) if aligned_read.is_reverse else (indel_only and True)
+            final_add = add_sc[0] or add_sc[1]
+            if add_sc[0]:
+                sc_seq['buffered'].append(aligned_read.seq[0:(start_coord + kmer_size)])
+                sc_seq['clipped'].append(aligned_read.seq[0:start_coord])
+            if add_sc[1]:
+                sc_seq['buffered'].append(seq[(end_coord - kmer_size):len(seq)])
+                sc_seq['clipped'].append(seq[end_coord:len(seq)])
+            if final_add:
+                read_d['sv'][utils.get_seq_readname(aligned_read)] = (aligned_read, sc_seq, new_clip_coords, indel_only)
         # end for loop
 
         sv_fq = open(self.files['sv_fq'], 'w')
@@ -367,23 +360,22 @@ class TargetManager(object):
             if qname in read_d['unmapped']:
                 read = read_d['unmapped'][qname]
                 read_d['sv'][utils.get_seq_readname(read)] = (read, None, None, False)
-                lout = ">" + read.qname + "\n" + str(read.seq)
-                sv_sc_fa.write(lout+"\n")
+                sv_sc_fa.write(">" + read.qname + "\n" + str(read.seq) + "\n")
 
         if not self.sv_reads:
             self.sv_reads = {}
         self.sv_reads[sample_type] = {}
         for qname in read_d['sv']:
-            aligned_read, sc_seq, cc, indel_only = read_d['sv'][qname]
+            aligned_read, sc_seq, clip_coords, indel_only = read_d['sv'][qname]
             self.sv_reads[sample_type][qname] = read_d['sv'][qname]
             if sample_type == 'sv': 
                 sv_bam.write(aligned_read)
             lout = utils.fq_line(aligned_read, indel_only, int(self.params.get_param('kmer_size')), True)
-            if lout:
+            if lout is not None:
                 sv_fq.write(lout)
             if sc_seq:
-                for sc in sc_seq['buffered']: 
-                    sv_sc_fa.write(">" + qname + "\n" + sc + "\n")
+                for clip_seq in sc_seq['buffered']: 
+                    sv_sc_fa.write(">" + qname + "\n" + clip_seq + "\n")
         self.disc_reads = {'disc':read_d['disc'], 'inv':read_d['inv_reads'], 'td':read_d['td_reads'], 'other':read_d['other']}
         sv_fq.close()
         sv_sc_fa.close()
@@ -393,7 +385,7 @@ class TargetManager(object):
             sv_bam.close()
             utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
             pysam.sort(self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
-            self.logger.info('Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
+            utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
             pysam.index(self.files['sv_bam_sorted'])
 
     def clean_reads(self, sample_type):
@@ -402,25 +394,27 @@ class TargetManager(object):
         '''
 
         # Run cleaning program
-        cutadapt = self.params.opts['cutadapt']
-        cutadapt_config = self.params.opts['cutadapt_config_file']
-        self.logger.info('Cleaning reads using %s with configuration file %s' % (cutadapt, cutadapt_config))
+        cutadapt = self.params.get_param('cutadapt')
+        cutadapt_config = self.params.get_param('cutadapt_config_file')
+        utils.log(self.logging_name, 'info', 'Cleaning reads using %s with configuration file %s' % (cutadapt, cutadapt_config))
+
         self.files['%s_cleaned_fq' % sample_type] = os.path.join(self.paths['data'], self.name + "_%s_reads_cleaned.fastq" % sample_type)
-        self.logger.info('Writing clean reads to %s' % self.files['%s_cleaned_fq' % sample_type])
+
+        utils.log(self.logging_name, 'info', 'Writing clean reads to %s' % self.files['%s_cleaned_fq' % sample_type])
         cutadapt_parameters = utils.stringify(cutadapt_config)
         cutadapt_cmd = '%s %s %s %s > %s' % (sys.executable, cutadapt, cutadapt_parameters, self.files['%s_fq' % sample_type], self.files['%s_cleaned_fq' % sample_type])
         utils.log(self.logging_name, 'debug', 'Cutadapt system command %s' % cutadapt_cmd)
         cutadapt_proc = subprocess.Popen(cutadapt_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         output, errors = cutadapt_proc.communicate()
-        self.logger.debug('Clean reads output %s' % output)
-        self.logger.debug('Clean reads errors %s' % errors)
+        utils.log(self.logging_name, 'debug', 'Clean reads output %s' % output)
+        utils.log(self.logging_name, 'debug', 'Clean reads errors %s' % errors)
 
         # Use these for pulling out reads after finding sample-only kmers.
         # Filter the cleaned reads to make sure soft clips were not adapters, re-write fastq
         if not self.cleaned_read_recs:
             self.cleaned_read_recs = {}
         self.cleaned_read_recs[sample_type] = None
-        self.files['%s_cleaned_fq' % sample_type], self.cleaned_read_recs[sample_type], self.read_len = utils.get_fastq_reads(self.files['%s_cleaned_fq' % sample_type], self.sv_reads[sample_type])
+        self.files['%s_cleaned_fq' % sample_type], self.cleaned_read_recs[sample_type] = utils.get_fastq_reads(self.files['%s_cleaned_fq' % sample_type], self.sv_reads[sample_type])
         self.sv_reads[sample_type] = None
         check = True
         if len(self.cleaned_read_recs[sample_type]) == 0:
@@ -435,18 +429,18 @@ class TargetManager(object):
         '''
 
         self.kmers['ref'] = {}
-        jellyfish = self.params.opts['jellyfish']
+        jellyfish = self.params.get_param('jellyfish')
         kmer_size = int(self.params.get_param('kmer_size'))
 
         for i in range(len(self.files['target_ref_fn'])):
             utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_ref_fn'][i])
             self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_ref_fn'][i], jellyfish, kmer_size), self.kmers['ref'])
 
-        if 'target_altref_fn' in self.files:
-            for i in range(len(self.files['target_altref_fn'])):
-                for j in range(len(self.files['target_altref_fn'][i])):
-                    utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_altref_fn'][i])
-                    self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_altref_fn'][i][j], jellyfish, kmer_size), self.kmers['ref'])
+        # if 'target_altref_fn' in self.files:
+        #     for i in range(len(self.files['target_altref_fn'])):
+        #         for j in range(len(self.files['target_altref_fn'][i])):
+        #             utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_altref_fn'][i])
+        #             self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_altref_fn'][i][j], jellyfish, kmer_size), self.kmers['ref'])
 
         utils.log(self.logging_name, 'info', 'Indexing kmers for sample sequence %s' % self.files['sv_cleaned_fq'])
         self.kmers['case'] = {}
@@ -481,31 +475,47 @@ class TargetManager(object):
         self.files['kmer_clusters'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers_merged.out")
         utils.log(self.logging_name, 'info', 'Writing kmer clusters to file %s' % self.files['kmer_clusters'])
         
-        self.kmers['clusters'] = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.read_len)
+        self.contigs = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.params.get_param('read_len'))
         self.cleaned_read_recs = None
         self.kmers['case_only'] = {}
+        self.finalize_contigs()
+
+    def finalize_contigs(self):
+
+        '''
+        '''
+
+        utils.log(self.logging_name, 'info', 'Finalizing %d assembled contigs' % len(self.contigs))
+        for contig_iter, assembled_contig in enumerate(self.contigs):
+            utils.log(self.logging_name, 'info', 'Finalizing contig %s' % assembled_contig.seq.value)
+            contig_id = self.name + '-contig' + str(contig_iter + 1)
+            assembled_contig.write_contig_values(contig_id, self.files['kmer_clusters'], self.paths['contigs'])
 
     def resolve_sv(self):
 
         '''
         '''
 
-        contig_iter = 1
-        utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.kmers['clusters']))
-        for assembled_contig in self.kmers['clusters']:
-            utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
-            contig_id = 'contig' + str(contig_iter)
-            ctig = contig.TargetContig(self, contig_id, assembled_contig)
-            ctig.query_ref(self.files['target_ref_fn'][0], self.get_values())
-            ctig.make_calls(self.get_values(), self.disc_reads, self.repeat_mask)
+        utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.contigs))
+        self.results = self.call_manager.resolve_sv_calls(self.contigs, self.files['target_ref_fn'][0], self.get_values(), self.disc_reads)
+        # print self.results
+        # sys.exit()
+        # contig_iter = 1
+        # utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.contigs))
+        # for assembled_contig in self.contigs:
+        #     utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
+        #     contig_id = 'contig' + str(contig_iter)
+        #     ctig = contig.TargetContig(self, contig_id, assembled_contig)
+        #     ctig.query_ref(self.files['target_ref_fn'][0], self.get_values())
+        #     ctig.make_calls(self.get_values(), self.disc_reads, self.repeat_mask)
 
-            if ctig.has_result():
-                ctig.write_result(self.paths['output'])
-                ctig.write_bam(self.files['sv_bam_sorted'], self.paths['output'])
-                self.results.append(ctig.result)
-            else:
-                utils.log(self.logging_name, 'info', '%s has no structural variant result.' % ctig.id)
-            contig_iter += 1
+        #     if ctig.has_result():
+        #         ctig.write_result(self.paths['output'])
+        #         ctig.write_bam(self.files['sv_bam_sorted'], self.paths['output'])
+        #         self.results.append(ctig.result)
+        #     else:
+        #         utils.log(self.logging_name, 'info', '%s has no structural variant result.' % ctig.id)
+        #     contig_iter += 1
 
     def get_values(self):
 
@@ -513,13 +523,6 @@ class TargetManager(object):
         '''
 
         return (self.chrom, self.start, self.end, self.name, self.target_intervals)
-
-    def rm_output_dir(self):
-
-        '''
-        '''
-
-        shutil.rmtree(self.paths['output'])
 
     def has_results(self):
 
@@ -541,7 +544,7 @@ class TargetManager(object):
             None
         '''
 
-        self.logger.info('Creating %s %s path (%s)' % (self.name, key, path))
+        utils.log(self.logging_name, 'info', 'Creating %s %s path (%s)' % (self.name, key, path))
         self.paths[key] = path
         if not os.path.exists(self.paths[key]):
             os.makedirs(self.paths[key])
@@ -561,7 +564,7 @@ class TargetManager(object):
             direction = "forward"
             if target_refseq_fn.find("forward") == -1:
                 direction = "reverse"
-            self.logger.info('Extracting refseq sequence and writing %s' % target_refseq_fn)
+            utils.log(self.logging_name, 'info', 'Extracting refseq sequence and writing %s' % target_refseq_fn)
             utils.extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.get_param('reference_fasta'), direction, target_refseq_fn, self.params.get_param('buffer_size'))
 
     # def setup_rmask(self,marker_fn):
@@ -694,26 +697,43 @@ class TargetManager(object):
     #    print 'Using mate seq check', add_sc, sc_seq, mate_seq
         return add_sc #, read
 
+    # def write_results(self):
+
+    #     '''
+    #     '''
+
+    #     result_files = {}
+    #     for res in self.results:
+    #         tag = res[6]
+    #         if tag.find('rearrangement') > -1: 
+    #             tag = 'rearrangement'
+    #         if tag not in result_files:  
+    #             header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
+    #             res_fn = os.path.join(self.paths['output'], self.name + "_" + tag + "_svs.out")
+    #             utils.log(self.logging_name, 'info', 'Writing %s results to file %s' % (tag, res_fn))
+    #             result_files[tag] = open(res_fn, 'w')
+    #             if not self.params.opts['no_output_header']:
+    #               result_files[tag].write(header)
+    #         result_files[tag].write("\t".join([str(x) for x in res]) + "\n")
+    #     for f in result_files:
+    #         result_files[f].close()
+
     def write_results(self):
 
         '''
         '''
 
-        result_files = {}
+        res_fn = os.path.join(self.paths['output'], self.name + "_svs.out")
+        result_file = open(res_fn, 'w')
+        header = "\t".join(['genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
+        result_file.write(header)
+
         for res in self.results:
-            tag = res[6]
-            if tag.find('rearrangement') > -1: 
-                tag = 'rearrangement'
-            if tag not in result_files:  
-                header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
-                res_fn = os.path.join(self.paths['output'], self.name + "_" + tag + "_svs.out")
-                self.logger.info('Writing %s results to file %s' % (tag, res_fn))
-                result_files[tag] = open(res_fn, 'w')
-                if not self.params.opts['no_output_header']:
-                  result_files[tag].write(header)
-            result_files[tag].write("\t".join([str(x) for x in res]) + "\n")
-        for f in result_files:
-            result_files[f].close()
+            utils.log(self.logging_name, 'info', 'Writing results to file: %s' % res_fn)
+            formatted_result_str = res.get_output_string()
+            result_file.write(formatted_result_str)
+            self.formatted_results.append(formatted_result_str)
+        result_file.close()
 
     def get_sv_counts(self):
 
@@ -746,7 +766,7 @@ class TargetManager(object):
 
         header = ['Target','N_contigs', 'Total_variants']
         total = self.get_sv_counts()
-        str_out = self.name + '\t' + str(len(self.kmers['clusters'])) + '\t' + str(total) + '\t'
+        str_out = self.name + '\t' + str(len(self.contigs)) + '\t' + str(total) + '\t'
         keys = self.svs.keys()
         keys.sort()
         header += ['N_'+str(x) for x in keys]
