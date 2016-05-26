@@ -135,6 +135,9 @@ class RealignedSegment(object):
     #             self.rep_man.setup(self.get_coords('hit'), rmask) 
     #             self.in_repeat, self.repeat_overlap, self.repeat_coords, self.filter_reps_edges = self.rep_man.other_values 
 
+    def has_gaps(self):
+        return min(self.gaps['hit']) > 0 or min(self.gaps['query']) > 0
+
     def get_coords(self, type):
         return self.vals[type]['coords']
   
@@ -497,7 +500,7 @@ class RealignResultSet(object):
             #print nmatch, ngaps, br.mean_cov
             # if i == 0 and self.check_segment_indel(realigned_segment):
             if i == 0:
-                if realigned_segment.spans_query() or (len(self.realignments) == 1 and realigned_segment.in_target):
+                if realigned_segment.has_gaps() and (realigned_segment.spans_query() or (len(self.realignments) == 1 and realigned_segment.in_target)):
                     has_indel = True
                     utils.log(self.logging_name, 'info', 'Contig has indel, returning %r' % has_indel)
                     self.sv_event = results.SVEvent(realigned_segment)
