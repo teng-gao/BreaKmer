@@ -40,8 +40,8 @@ RUN_PARSER.add_argument('--align_thresh', dest='align_thresh', default=.90, type
 RUN_PARSER.add_argument('--no_output_header', dest='no_output_header', default=False, action='store_true', help='Suppress output headers. [default: %(default)s]')
 RUN_PARSER.add_argument('--discread_only_thresh', dest='discread_only_thresh', default=2, type=int, help='The number of discordant read pairs in a cluster to output without evidence from a split read event. [default: %(default)s]')
 RUN_PARSER.add_argument('--keep_repeat_regions', dest='keep_repeat_regions', default=True, action='store_true', help='Keep indels in repeat regions. No repeat mask bed file required if set. [default: %(default)s]')
-RUN_PARSER.add_argument('--keep_intron_vars', dest='keep_intron_vars', default=False, action='store_true', help='Keep intronic indels or rearrangements [default: %default]')
-RUN_PARSER.add_argument('--preset_ref_data', dest='preset_ref_data', default=True, action="store_true", help='Preset all the reference data for all the targets before running analysis. [default: %default]')
+RUN_PARSER.add_argument('--keep_intron_vars', dest='keep_intron_vars', default=False, action='store_true', help='Keep intronic indels or rearrangements [default: %(default)s]')
+RUN_PARSER.add_argument('--preset_ref_data', dest='preset_ref_data', default=True, action="store_true", help='Preset all the reference data for all the targets before running analysis. [default: %(default)s]')
 # RUN_PARSER.add_argument('--generate_image', dest='generate_image', default=False, action='store_true', help='Generate pileup image for events. [default: %(default)s]')
 RUN_PARSER.add_argument('--hostname', dest='blat_hostname', default='localhost', help='The hostname for the blat server. Localhost will be used if not specified. [default: %(default)s]')
 RUN_PARSER.add_argument('-g', '--gene_list', dest='gene_list', default=None, help='Gene list to consider for analysis. [default: %(default)s]')
@@ -62,6 +62,7 @@ SERVER_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, req
 REF_PARSER.add_argument('-g', '--gene_list', dest='gene_list', default=None, help='Gene list to consider for analysis. [default: %(default)s]')
 REF_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=True, help='The configuration filename that contains additional parameters. [default: %(default)s]')
 REF_PARSER.add_argument('-n', '--nprocessors', dest='nprocs', default=1, type=int, help='The number of processors to use for analysis. [default: %(default)s]')
+REF_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=100, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
 
 PMANAGER = params.ParamManager(PARSER.parse_args())
 RUNNER = analysis.RunTracker(PMANAGER)
