@@ -10,6 +10,11 @@ A google groups forum page is also available for posting issues: https://groups.
 News
 ====
 
+#### May 26, 2016
+Preparing to deploy a new version release (0.0.4-beta). I am looking for beta testers to run their data through it or sharing some data for me to test.
+
+More work will follow for benchmarking and testing, but an initial test on a publically available sample [SRR1304138]() from the published dataset with a BCR-ABL1 translocation had a run time of < 1 minute on a Mac when only analyzing BCR and ABL1 genes with ~300x depths.
+
 #### May 24, 2016
 Major updates to structure of the code, it is much more modularized and succinct. Improvements should be much easier now. I have merged the different output types into a single output file ("_svs.out") and taken out the "nkmers" and "repeat_overlap" columns. The contig IDs are now labelled with the target region name and there is a "sv_subtype" included in the subtype for the different type of rearrangement categories. There is also no concatentation of 'chr' onto the chromosome names for indels or rearrangements as before. There were a few other minor algorithmic changes to the processing of realignment calls and how the discordant reads are being extracted and matched to the variant calls. These will continue to be modified, as the ultimate goal is to call variants with splitread and discordant read evidence jointly rather than in serial. Currently, the code is stable and works on a few test cases; however, the basic filters that were in place need to be reimplemented.
 
@@ -46,30 +51,59 @@ Use appropriate commands for installing locally:
 python setup.py install --user
 ```
 
-Using the setup.py script for installation should setup the required python module dependencies for appropriate usage. If the install script is not used, the two modules need to be downloaded and installed if not already:
+Dependencies that need to be downloaded and installed if not already:
 - [Biopython 1.62](http://biopython.org/wiki/Main_Page)
 - [Pysam 0.6](https://code.google.com/p/pysam/)
 
 BreaKmer has currently been installed and tested on:
+- 64bit OSX
 - 64bit linux using CentOS release 5.5 and python2.7.2 
 - 64bit linux using Ubuntu release 14.04 and python2.7.6
 
 Usage
 ---------
 
-List the available command line parameters.
+####### List the available command line parameters.
 ```
-python <PATH_TO_BREAKMER_DIR>/breakmer.py -h
+python <PATH TO BREAKMER DIR>/breakmer.py -h
 ```
+
+###### Setup the reference data prior to analysis.
+  - This will extract the reference sequence data into the specified reference directory for each of the target regions defined in the input bed file.
+```
+python <PATH TO BREAKMER DIR>/breakmer.py setup_reference_data -c <PATH TO BREAKMER CONFIGURATION FILE>
+```
+
+###### Start blat server
+  - Note that this is a convenience function. If the server is not started before using the 'run' function, a new server will be initiated prior to analysis.
+
+Start the server on the 'localhost' with a random port number. The port that is choosen will be printed in the standard output, which should be specified as an input parameter when using the 'run' function.
+```
+python <PATH TO BREAKMER DIR>/breakmer.py start_blat_server -c <PATH TO BREAKMER CONFIGURATION FILE>
+```
+
+Start the server on a specified host with a random port number.
+```
+python <PATH TO BREAKMER DIR>/breakmer.py start_blat_server -c <PATH TO BREAKMER CONFIGURATION FILE> --hostname <HOSTNAME>
+```
+
+Start the server on a specified host and specified port number.
+```
+python <PATH TO BREAKMER DIR>/breakmer.py start_blat_server -c <PATH TO BREAKMER CONFIGURATION FILE> --hostname <HOSTNAME> -p <PORT NUMBER>
+```
+
+###### Run analysis
+  - The reference files and blat server do not need to be setup before executing this command, but they may save time if the analysis needs to be rerun multiple times. It will first check to see if the reference sequence files for the targets have been extracted.
+  - If the blat port and hostname are not specified in the command, it will start a new blat server.
 
 Analyze all the target genes specified in the targets bed file.
 ```
-python <path to breakmer scripts>/breakmer.py <options> <path to breakmer configuration file>
+python <PATH TO BREAKMER DIR>/breakmer.py -c <PATH TO BREAKMER CONFIGURATION FILE>
 ```
 
 Analyze a subset of genes specified in a file.
 ```
-python <path to breakmer scripts>/breakmer.py -g <file containing list of target genes to analyze> <path to breakmer configuration file>
+python <PATH TO BREAKMER DIR>/breakmer.py -c <PATH TO BREAKMER CONFIGURATION FILE> -g <PATH TO TEXT FILE CONTAINING A LIST OF TARGET REGIONS TO ANALYZE>
 ```
 
 Requirements
@@ -101,7 +135,7 @@ When these programs are installed, the paths to the binaries can be either be sp
       - [Bowtie](http://bowtie-bio.sourceforge.net/index.shtml)
     - It is also useful to mark duplicate reads prior to using BreaKmer, as these will inflate read counts for identified variants.
       - [Picard MarkDuplicates](http://picard.sourceforge.net/command-line-overview.shtml#MarkDuplicates)
-- Normal bam file
+- Normal bam file (Currently untested)
   - A matched normal with similarly targeted sequencing data as the sample can be input to help filter germline events. The sequences in the normal bam file are processed for each target in a similar manner to the sample sequences and used to further filter our kmers. This is an optional input in the configuration file as "normal_bam_file".
 
 ### Reference data
@@ -110,23 +144,10 @@ When these programs are installed, the paths to the binaries can be either be sp
   - Format: single fasta file with chromosome number/id as names (i.e. '>1', '>2', '>3')
   - Hg19 fasta files can be downloaded from UCSC Genome Browser(http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/)
   - This file should be placed in a writeable directory. A 2bit file will be generated from this file to start the blat server.
-- Reference genome annotation 
+- Reference genome annotation
   - This file is used by BreaKmer to annotate the locations of the breakpoints identified and the genes involved. This is required as input in the configuration file as the "gene_annotation_file".
   - Format: tab delimited file containing a row for each RefSeq transcript with multiple columns describing the coding coordinates of the transcript.
   - Hg19 RefSeq annotation file can be downloaded from UCSC Genome Browser [Table Browser](http://genome.ucsc.edu/cgi-bin/hgTables?command=start) using assembly: Feb. 2009 (GRCh37/hg19), group: Genes and Gene Predictions, track: RefSeq Genes, table: refGene
-- Repeat mask bed file 
-  - This file is used by BreaKmer to determine whether breakpoints and identified variants lie within simple and low-complexity repeat regions that have been annotated. This is an optional input in the configuration file as "repeat_mask_file".
-  - Format: tab delimited file containing the coordinates for the various repeat regions.
-  - Hg19 repeat regions bed file can be downloaded from UCSC Genome Browser [Table Browser](http://genome.ucsc.edu/cgi-bin/hgTables?command=start) with group = Repeats, track = RepeatMasker, table = rmsk, output format: BED
-- Alternate reference assembly sequences 
-  - This is an optional input in the configuration file as the "alternate_fastas". These are used to supplement the required reference fasta sequence and helpful for removing indel variants that exist in the reference sequence but not either of the alternate assembly sequences.
-  - Format: single fasta file with chromosome number/id as names (i.e. '>1', '>2', '>3')
-  - There are two alternate assemblies available for human, [CHM1_1.1](http://www.ncbi.nlm.nih.gov/assembly/GCF_000306695.2/) and [HuRef](http://www.ncbi.nlm.nih.gov/assembly/GCA_000002125.2).
-
-### Other files
-- Target regions bed file
-  - The target regions sequenced need to be specified in a bed file for BreaKmer to know the coordinates of the regions sequenced and which are to be analyzed. This is a required input in the configuration file as the "targets_bed_file".
-  - Format: a tab delimited file containing the chromosome, start, end, HUGO gene name, and exon/intron feature of a tile region of the genome. The tiled regions should not be overlapping.
 
 Configuration file
 ------------
@@ -155,10 +176,7 @@ gene_annotation_file=<path to gene annotation file, e.g., ucsc_hg19_refgene.txt>
 kmer_size=15
 
 # Optional parameters
-other_regions_file=<path to bed file containing coordinates for targeted unannotated cluster regions if they exist, such as IGH, IGK> 
 normal_bam_file=<path to normal bam file, can be used to filter germline events with matched-normal sample>
-alternate_fastas=<comma delimited list of the paths to alternate fasta files, such as HuRef or CHM1>
-repeat_mask_file=<path to ucsc_hg19_rmsk.bed> # Only used when available, useful for helping filtering events in simple repeat regions.
 ```
 
 Input file formats
@@ -171,17 +189,12 @@ Input file formats
 15      45007621        45007922        B2M     exon
 15      45008527        45008540        B2M     exon
 ```
-- other_regions_file = tab-delimited file with columns: chr, start, end, region_name
-   - This file is intended to cover regions that are not annotated in the annotation file. These are useful for cluster regions that are not well annotated in the annotation files.
-```
-14   22090057        23021075        TRA
-7    141998851       142510972       TRB
-```
+
 - cutadapt_config_file = each row corresponds to a parameter for cutadapt (see cutadapt.cfg example file or cutadapt documentation)
   - The file provided is intended for data generated using the paired-end Illumina TruSeq library.
   - Many of the Illumina library sequences have been annotated [elsewhere](https://wikis.utexas.edu/display/GSAF/Illumina+-+all+flavors).
 - reference_fasta = genome reference fasta formatted file containing all the chromosome reference sequences that were used to initially align the data.
-  - This shold be a single file containing all the sequences.
+  - This should be a single file containing all the sequences.
 - gene_annotation = Annotation file containing the location of reference genes. These can be downloaded from UCSC Genome Browser, (i.e., [hg19 refGene table](http://hgdownload.cse.ucsc.edu/goldenPath/hg19/database/))
 ```
 #bin    name    chrom   strand  txStart txEnd   cdsStart        cdsEnd  exonCount       exonStarts      exonEnds        score   name2   cdsStartStat    cdsEndStat      exonFrames
@@ -197,46 +210,11 @@ Input file formats
 ,-1,-1,0,0,0,2,2,0,1,0,2,
 ...
 ```
-- repeat_mask_file = A BED formatted file containing repeat masked regions. These can be found from [UCSC Genome Table Browser](http://genome.ucsc.edu/cgi-bin/hgTables?hgsid=370921603_HSUaLVPi7dEbtDqCy5W1ANaqC7Fz) with group = Repeats, track = RepeatMasker, table = rmsk
-```
-chr1    16777160        16777470        AluSp   2147    +
-chr1    25165800        25166089        AluY    2626    -
-chr1    33553606        33554646        L2b     626     +
-chr1    50330063        50332153        L1PA10  12545   +
-chr1    58720067        58720973        L1PA2   8050    -
-chr1    75496180        75498100        L1MB7   10586   +
-chr1    83886030        83886750        ERVL-E-int      980     -
-chr1    100662895       100663391       L2a     1422    -
-chr1    117440426       117440514       L1ME1   532     +
-chr1    117440494       117441457       L1ME1   4025    +
-...
-```
-
-BreaKmer parameters
--------------
-| Parameter | Description | Default |
-|---------- | ----------- | ------- |
-| -l, --log_level    | Logging level | Debug |
-| -a, --keep_repeat_regions | Keep indels in repeat regions. No repeat mask bed file required if set. | False |
-| -p, --preset_ref_data | Preset all the reference dta for all the target regions before running analysis. | False |
-| -s, --indel_size | Indel size filter | 15 |
-| -c, --trl_sr_thresh | Assembled read support threshold for translocations | 2 |
-| -d, --indel_sr_thresh | Assembled read support threshold for indels | 5 | 
-| -r, --rearr_sr_thresh | Assembled read support threshold for inversions and tandem duplications | 3 |
-| -g, --gene_list | File containing a list of target region names to consider for analysis. Names must match targets_bed_file region names. | None |
-| -k, --keep_intron_vars | Keep indels or rearrangements with breakpoints in intron regions | False |
-| -v, --var_filter | Variant types to report (all, indel, trl, rearrangement) | all |
-| -m, --rearr_min_seg_len | Threshold for minimum segment length to be rearranged | 30 |
-| -n, --trl_min_seg_len | Threshold for minimum length of a translocation segment | 25 |
-| -t, --align_thresh | Threshold for minimum read alignment for assembly | .90 |
-| -z, --no_output_header | Suppress headers on output files. | False |
-
-- kmer_size = option to change the length of the kmer size used (default = 15 bp).
 
 Output files and formats
 -----------
 
-- While the program is running a log file analysis_dir/log.txt will continually be updated with information regarding the status of the analysis. 
+- While the program is running a log file analysis_dir/log.txt will continually be updated with information regarding the status of the analysis.
 
 ### Logging
   - While the program is running a log file will (\<analysis\_directory\>/log.txt) continually be updated with information regarding the status of the analysis.
@@ -250,25 +228,23 @@ Output files and formats
 
 ### Final output 
   - When the program completes, the final output files are directed into a directory labeled 'output' within the specified analysis directory. 
-  - Summary file
-    - A summary file labeled \<analysis_name\>\_summary.out contains columns: Target name, number of contigs assembled, total number of variants detected, number of indels, number of inversions and tandem duplications, number of translocations, and a list of translocation gene partners.
-  - Output for each SV type are put in respective tab-delimited files, labeled \<analysis_name\>\_\<indel,trl,inv\_rearrangement,td\_rearrangement\>\_svs.out
+  - Output for all structural variants are output in a single tab-delimited file, labeled \<analysis_name\>\_svs.out
     - The columns are:
        - genes - Gene/Target names
        - target_breakpoints - Target genomic breakpoints (chr:pos) (I/D<size> for indels)
-       - align_cigar - Re-alignment CIGAR string
        - mismatches - Number of re-alignment mismatches
        - strands - Strand(s) of contig when realigned
-       - rep_overlap_segment_len - Percentage re-alignment overlaps with repeat regions:length of aligned BLAT segments
+       - total_matches - The number of alignment matches between the contig sequence segment and the reference sequence, based on the realignment.
        - sv_type - Type of variation detected
+       - sv_subtype - Specific type of rearrangement (inversion, tandem duplication, translocation)
        - split_read_count - Number of assembled reads that cover the assembled contig at the inferred breakpoint
-       - nkmers - Number of kmers used to assemble the contig
        - disc_read_count - Number of discordantly-mapped paired-end reads that support the event (Not applicable to indels).
        - breakpoint_coverages - Number of non-duplicated reads aligned at the inferred breakpoint locations.
        - contig_id - Contig ID
-       - contig_seq - Contig sequence. 
+       - contig_seq - Contig sequence.
   - Each target gene in which a SV was detected has a separate output directory (\<analysis\_dir\>/output/\<target\_name\>) containing formatted output specific to the target and the related reference-aligned sequence reads for the contigs that contain the structural variants detected in BAM format.
 =======
+
 Documentation:
 http://ryanabo.github.io/BreaKmer
->>>>>>> 2ea81b24aaac6cfd87e381751775d7c3afb13b9e
+
