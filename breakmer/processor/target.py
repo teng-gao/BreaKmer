@@ -49,11 +49,18 @@ def add_discordant_pe(aread, read_d, bamfile):
     # the mate is mapped.
     if aread.mapq > 0 and ((aread.rnext != -1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
         mate_refid = bamfile.getrname(aread.rnext)  # Grab the paired read
-        mate_read = bamfile.mate(aread)
-        if mate_read.mapq > 0:
-          if mate_refid not in read_d['disc']:
+        # mate_read = None
+        # try:    
+        #     mate_read = bamfile.mate(aread)
+        # except:
+        #     print 'Skipping read'
+        #     pass
+
+        # if mate_read is not None:
+        #     if mate_read.mapq > 0:
+        if mate_refid not in read_d['disc']:
             read_d['disc'][mate_refid] = []
-          read_d['disc'][mate_refid].append((aread.pos, aread.pnext))  # Store the read position and the mate position
+        read_d['disc'][mate_refid].append((aread.pos, aread.pnext))  # Store the read position and the mate position
 
     if aread.mapq > 0 and not aread.mate_is_unmapped and aread.tid == aread.mrnm:
         if aread.is_read1:
