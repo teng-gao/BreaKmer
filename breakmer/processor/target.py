@@ -785,3 +785,10 @@ class TargetManager(object):
         header.append('Rearrangements')
         str_out += rearrs
         return "\t".join(header), str_out
+
+    def rm_output_dir(self):
+
+        '''
+        '''
+
+        shutil.rmtree(self.paths['output'])
