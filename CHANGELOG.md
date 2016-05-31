@@ -1,6 +1,9 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [0.0.4-beta.1] - 2016-05-31
+    - Bug fix, reimplemented function to remove target output directory if there is no target output results.
+
 ## [0.0.4-beta] - 2016-05-26
     - Breakpoint read coverages were reimplemented and now in the output file.
     - Basic filters were reimplemented.
