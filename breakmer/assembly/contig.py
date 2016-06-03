@@ -99,67 +99,93 @@ class read_batch:
   
 
 class assembly_counts:
-  def __init__(self, read, nreads):
-    self.indel_only = [0]*len(read.seq)
-#    self.all = [0]*len(read.seq)
-    self.others = [0]*len(read.seq)
-    self.set_counts(0, len(read.seq), nreads, read.indel_only)
 
-  def get_counts(self, p1, p2, sv_type):
-    counts = []
-    if sv_type == 'indel' or sv_type == 'rearr':
-      if p1 == p2: counts = self.indel_only[p1] + self.others[p1]
-      else: counts = map(lambda (x,y): x+y, zip(self.indel_only[p1:p2], self.others[p1:p2]))
-    else:
-      if p1 == p2: counts = self.others[p1]
-      else: 
-        counts = self.others[p1:p2]
-    return counts
+    def __init__(self, read, nreads):
 
-  def get_total_reads(self):
-    return max(self.indel_only) + max(self.others) 
+        '''
+        '''
+        
+        self.indel_only = [0]*len(read.seq)
+    #    self.all = [0]*len(read.seq)
+        self.others = [0]*len(read.seq)
+        self.set_counts(0, len(read.seq), nreads, read.indel_only)
 
-  def set_superseq(self, read, nreads, start, end):
-    # The counts vectors have to grow by the new seq length with nreads, then add back
-    # the previous counts into the right positions indicated by start, end
-    tmp_indel_only = [0]*len(read.seq)
-    tmp_others = [0]*len(read.seq)
-    if read.indel_only: 
-      tmp_indel_only = [nreads]*len(read.seq)
-    else:
-      tmp_others = [nreads]*len(read.seq)
-    tmp_indel_only[start:end] = map(lambda (x,y): x+y, zip(tmp_indel_only[start:end], self.indel_only))
-    tmp_others[start:end] = map(lambda (x,y): x+y, zip(tmp_others[start:end], self.others))
-    self.indel_only = tmp_indel_only
-    self.others = tmp_others
+    def get_counts(self, p1, p2, sv_type):
 
-  def set_counts(self, start, end, nreads, indel_only):
-    if indel_only:
-      self.indel_only[start:end] = map(lambda x: x+nreads, self.indel_only[start:end])
-    else:
-      self.others[start:end] = map(lambda x: x+nreads, self.others[start:end])
+        '''
+        '''
 
-  def extend_counts(self, l, nreads, indel_only, direction):
-    fill_counts = [0]*l
-    ecounts = [nreads]*l
-    if indel_only:
-      if direction == 'post': 
-        self.indel_only.extend(ecounts)
-        self.others.extend(fill_counts)
-      else:
-        ecounts.extend(self.indel_only)
-        self.indel_only = ecounts
-        fill_counts.extend(self.others)
-        self.others = fill_counts
-    else:
-      if direction == 'post':
-        self.indel_only.extend(fill_counts)
-        self.others.extend(ecounts)
-      else:
-        ecounts.extend(self.others)
-        self.others = ecounts
-        fill_counts.extend(self.indel_only)
-        self.indel_only = fill_counts
+        counts = []
+        if sv_type == 'indel' or sv_type == 'rearr':
+            if p1 == p2:
+                counts = self.indel_only[p1] + self.others[p1]
+            else:
+                counts = map(lambda (x,y): x+y, zip(self.indel_only[p1:p2], self.others[p1:p2]))
+        else:
+            if p1 == p2:
+                counts = self.others[p1]
+            else: 
+                counts = self.others[p1:p2]
+        return counts
+
+    def get_total_reads(self):
+        '''
+        '''
+        return max(self.indel_only) + max(self.others)
+
+    def set_superseq(self, read, nreads, start, end):
+
+        '''
+        '''
+
+        # The counts vectors have to grow by the new seq length with nreads, then add back
+        # the previous counts into the right positions indicated by start, end
+        tmp_indel_only = [0]*len(read.seq)
+        tmp_others = [0]*len(read.seq)
+        if read.indel_only: 
+            tmp_indel_only = [nreads]*len(read.seq)
+        else:
+            tmp_others = [nreads]*len(read.seq)
+        tmp_indel_only[start:end] = map(lambda (x,y): x+y, zip(tmp_indel_only[start:end], self.indel_only))
+        tmp_others[start:end] = map(lambda (x,y): x+y, zip(tmp_others[start:end], self.others))
+        self.indel_only = tmp_indel_only
+        self.others = tmp_others
+
+    def set_counts(self, start, end, nreads, indel_only):
+
+        '''
+        '''
+
+        if indel_only:
+            self.indel_only[start:end] = map(lambda x: x+nreads, self.indel_only[start:end])
+        else:
+            self.others[start:end] = map(lambda x: x+nreads, self.others[start:end])
+
+    def extend_counts(self, l, nreads, indel_only, direction):
+
+        '''
+        '''
+
+        fill_counts = [0]*l
+        ecounts = [nreads]*l
+        if indel_only:
+            if direction == 'post': 
+                self.indel_only.extend(ecounts)
+                self.others.extend(fill_counts)
+            else:
+                ecounts.extend(self.indel_only)
+                self.indel_only = ecounts
+                fill_counts.extend(self.others)
+                self.others = fill_counts
+        else:
+            if direction == 'post':
+                self.indel_only.extend(fill_counts)
+                self.others.extend(ecounts)
+            else:
+                ecounts.extend(self.others)
+                self.others = ecounts
+                fill_counts.extend(self.indel_only)
+                self.indel_only = fill_counts
 
 class AssemblySeq(object):
 
