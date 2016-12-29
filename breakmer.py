@@ -27,6 +27,7 @@ SUBPARSERS = PARSER.add_subparsers(help='Program mode (run, start_blat_server, p
 RUN_PARSER = SUBPARSERS.add_parser('run', help='Run analysis to detect structural variants.')
 SERVER_PARSER = SUBPARSERS.add_parser('start_blat_server', help='Start the blat server prior to performing the analysis.')
 REF_PARSER = SUBPARSERS.add_parser('prepare_reference_data', help='Prepare the reference sequence data for target regions prior to analysis.')
+PROFILE_PARSER = SUBPARSERS.add_parser('profile_data', help='Quickly determine basic coverage metrics from the sample bam file.')
 
 # Run parser
 RUN_PARSER.add_argument('--log_level', dest='log_level', default='DEBUG', help='Log level [default: DEBUG]')
@@ -63,6 +64,10 @@ REF_PARSER.add_argument('-g', '--gene_list', dest='gene_list', default=None, hel
 REF_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=True, help='The configuration filename that contains additional parameters. [default: %(default)s]')
 REF_PARSER.add_argument('-n', '--nprocessors', dest='nprocs', default=1, type=int, help='The number of processors to use for analysis. [default: %(default)s]')
 REF_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=100, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
+
+PROFILE_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=False, help='The configuration filename that contains additional parameters. [default: %(default)s]')
+PROFILE_PARSER.add_argument('--bam_file', dest='sample_bam_file', default=None, required=True, help='The bam file to profile. [default: %(default)s]')
+PROFILE_PARSER.add_argument('--analysis_dir', dest='analysis_dir', default=None, required=True, help='The analysis directory containing the output files. [default: %(default)s]')
 
 PMANAGER = params.ParamManager(PARSER.parse_args())
 RUNNER = analysis.RunTracker(PMANAGER)

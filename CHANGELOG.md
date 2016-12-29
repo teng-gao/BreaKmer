@@ -1,6 +1,11 @@
 # Change Log
 All notable changes to this project will be documented in this file.
 
+## [0.0.4-beta.1] - 2016-06-07
+    - Added an initial sample from the published, publicly available bam files from Abo et al. (2014) manuscript to the example_data directory.
+    - Added a check for the index file for the input sample bam file.
+    - Created new function for profiling the sample bam input file sequence coverage. This function will aid in the generation of a bed file when none exists or just for general purpose metrics of a bam file.
+
 ## [0.0.4-beta.1] - 2016-05-31
     - Bug fix, reimplemented function to remove target output directory if there is no target output results.
 
