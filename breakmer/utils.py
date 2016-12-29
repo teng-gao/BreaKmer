@@ -16,6 +16,7 @@ import subprocess
 import random
 import time
 import math
+import pysam
 from Bio import SeqIO
 
 
@@ -24,6 +25,186 @@ __copyright__ = "Copyright 2015, Ryan Abo"
 __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
 
+
+def profile_data(sample_bam_file):
+
+    '''
+    '''
+
+    means = [random.random() for i in range(5)]
+    param = 0.01
+    thresh = 10
+    print means
+
+    target_regions = []
+    region = []
+    in_region = False
+    bam_file = pysam.AlignmentFile(sample_bam_file, 'rb')
+
+    bam_header = bam_file.header
+    # for seq in bam_header['SQ']:
+    #     print seq['SN'], seq['LN']
+    # sys.exit()
+
+    print 'Pass 1'
+    seq_indices = []
+    sampling = 0
+    sample_size = 50000000
+    chrom_sample_size = 5000000
+    while sampling < sample_size:
+        seq_index = random.randint(0,23)
+        while seq_index in seq_indices:
+            seq_index = random.randint(0,23)
+        print 'Evaluating %s sites on chrom' % chrom_sample_size, bam_header['SQ'][seq_index]['SN']
+        seq_indices.append(seq_index)
+        for i, pileup_col in enumerate(bam_file.pileup(bam_header['SQ'][seq_index]['SN'])):
+            cov = pileup_col.n
+            # If coverage is above a threshold, then determine the
+            # coverage using the high quality mapped reads
+            if cov > thresh:
+                cov2 = 0
+                for pileupread in pileup_col.pileups:
+                    if pileupread.alignment.mapq > 20:
+                        cov2 += 1
+                cov = cov2
+            closest_k = 0
+            smallest_error = 99999
+            for k in enumerate(means):
+                error = abs(cov-k[1])
+                if error < smallest_error:
+                    smallest_error = error
+                    closest_k = k[0]
+
+            means[closest_k] = means[closest_k]*(1-param) + cov*(param)
+            # print pileup_col.reference_name, pileup_col.pos, 'cov:' + str(cov), 'Index:' + str(closest_k), 'means:' + ','.join([str(x) for x in means])
+            if i > chrom_sample_size:
+                print means
+            #     print means
+            #     print pileup_col.reference_name, pileup_col.pos
+                break
+            sampling += 1
+
+    print 'Pass 2'
+    cluster_window = [0] * 50
+    for i, pileup_col in enumerate(bam_file.pileup()):
+        cov = pileup_col.n
+        # If coverage is above a threshold, then determine the
+        # coverage using the high quality mapped reads
+        if cov > thresh:
+            cov2 = 0
+            for pileupread in pileup_col.pileups:
+                if pileupread.alignment.mapq > 20:
+                    cov2 += 1
+            cov = cov2
+        cluster_window.pop(0)
+        cluster_window.append(cov)
+        avg_cov = float(sum(cluster_window)) / float(len(cluster_window))
+        max_cov = max(cluster_window)
+        closest_k = 0
+        smallest_error = 99999
+        for k in enumerate(means):
+            error = abs(max_cov-k[1])
+            if error < smallest_error:
+                smallest_error = error
+                closest_k = k[0]
+
+        # print pileup_col.reference_name, pileup_col.pos, 'cov:' + str(cov), 'Index:' + str(closest_k), 'means:' + ','.join([str(x) for x in means])
+
+        if min(means) != means[closest_k]:
+            if not in_region:
+                in_region = True
+                region = [closest_k, pileup_col.reference_name, pileup_col.pos]
+                print 'Starting a new region', pileup_col.reference_name, pileup_col.pos, avg_cov
+        elif in_region:
+            in_region = False
+            region.extend([pileup_col.pos, means[region[0]]])
+            print 'Ending region', 'chr' + region[1] + ':' + str(region[2]) + '-' + str(region[3]), avg_cov
+            target_regions.append(region)
+
+        # means[closest_k] = means[closest_k]*(1-param) + cov*(param)
+        # print pileup_col.reference_name, pileup_col.pos, 'cov:' + str(cov), 'Index:' + str(closest_k), 'means:' + ','.join([str(x) for x in means])
+        # if i > 5000000:
+        #     print means
+        #     print target_regions
+        # #     print means
+        # #     print pileup_col.reference_name, pileup_col.pos
+        #     break
+
+    # means.sort()
+    # print means
+    fout = open('regions.bed', 'w')
+    for target_region in target_regions:
+        bed_out = '\t'.join([str(x) for x in [target_region[1], target_region[2], target_region[3]]])
+        fout.write(bed_out + '\n')
+    fout.close()
+
+def profile_data2(sample_bam_file):
+
+    '''Iterate over the bam file coverage information and provide basic
+    sequence coverage metrics.
+
+    Args:
+        sample_bam_file (str):  The absolute path to the sample bam file.
+                                It is assumed to be coordinate sorted with a
+                                corresponding index file in the same location.
+    Returns:
+        None
+    '''
+
+    moving_avg = 0
+    coverage_window = [0]*10
+    bam_file = pysam.AlignmentFile(sample_bam_file, 'rb')
+    total = 0
+    target_positions = []
+    in_target = False
+    region = []
+    thresh = 10
+    region_max = 0
+    clusters = []
+    for i, pileup_col in enumerate(bam_file.pileup()):
+        cov = pileup_col.n
+        # If coverage is above a threshold, then determine the
+        # coverage using the high quality mapped reads
+        if cov > thresh:
+            cov2 = 0
+            for pileupread in pileup_col.pileups:
+                if pileupread.alignment.mapq > 20:
+                    cov2 += 1
+            cov = cov2
+
+        coverage_window.pop(0)
+        coverage_window.append(cov)
+        window_avg = float(sum(coverage_window)) / len(coverage_window)
+        if in_target:
+            if window_avg <= 10*moving_avg or cov < 2:
+                # End the target region
+                region.append(pileup_col.pos)
+                region.append(region_max)
+                target_positions.append(region)
+                region = []
+                region_max = 0
+                in_target = False
+                if len(clusters) < 1:
+                    clusters.append(target_positions[-1][-1])
+                else:
+                    for cluster in clusters:
+                        if abs(cluster - target_positions[-1][-1]) > (cluster*1.5):
+                            clusters.append(target_positions[-1][-1])
+                            print cluster, target_positions[-1][-1], abs(cluster - target_positions[-1][-1]), (cluster*1.5)
+                    print 'clusters', clusters
+                if target_positions[-1][-1] >= 100:
+                    print len(target_positions), 'target positions', target_positions[-1]
+            else:
+                region_max = max(region_max, cov)
+        elif window_avg > 10*moving_avg and cov > thresh:
+            # Initiate a target region
+            in_target = True
+            region = [pileup_col.reference_name, pileup_col.pos]
+            region_max = cov
+        else:
+            total += cov
+            moving_avg = float(total) / float(i+1)
+        #print pileup_col.reference_name, pileup_col.pos, pileup_col.n, cov, moving_avg, total, i, window_avg #, target_positions
 
 def setup_logger(log_filename_path, name):
     """Creates the logger object and associated text file to use throughout
