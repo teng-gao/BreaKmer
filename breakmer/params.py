@@ -78,12 +78,15 @@ class ParamManager(object):
         for log_msg in log_msgs:
             utils.log(self.logging_name, log_msg[0], log_msg[1])
 
-        self.set_targets()
-        self.gene_annotations = Anno()
-        self.gene_annotations.add_genes(self.get_param('gene_annotation_file'))
+        if self.get_param('targets_bed_file') is not None:
+            self.set_targets()
+            self.gene_annotations = Anno()
+            self.gene_annotations.add_genes(self.get_param('gene_annotation_file'))
 
-        self.paths['ref_data'] = os.path.abspath(os.path.normpath(self.opts['reference_data_dir']))  # Path to target reference sequence fast files.
-        self.set_param('reference_fasta_dir', os.path.split(self.opts['reference_fasta'])[0])  # Path to genome fasta file.
+        if 'reference_data_dir' in self.opts:
+            self.paths['ref_data'] = os.path.abspath(os.path.normpath(self.opts['reference_data_dir']))  # Path to target reference sequence fast files.
+        if 'reference_fasta' in self.opts:
+            self.set_param('reference_fasta_dir', os.path.split(self.opts['reference_fasta'])[0])  # Path to genome fasta file.
 
         # Setup directories
         self.paths['analysis'] = os.path.abspath(os.path.normpath(self.opts['analysis_dir']))
@@ -102,6 +105,8 @@ class ParamManager(object):
         # If starting the blat server then return.
         if self.fnc_cmd == 'start_blat_server':
             utils.log(self.logging_name, 'info', 'Starting the blat server.')
+            return
+        if self.fnc_cmd == 'profile_data':
             return
 
         self.check_binaries()  # Check if Jellyfish and Cutadapt work.
@@ -124,19 +129,20 @@ class ParamManager(object):
             None
         """
 
-        for line in open(self.input_args.config_fn, 'rU'):
-            line = line.strip()
-            if line == '' or line.find('#') > -1:  # Allow for blank lines and comments
-                continue
-            linesplit = line.split("=")
-            if len(linesplit) == 1:  # Make sure the lines in the configuration file are set properly.
-                err_msg = 'Configuration file line', line, ' is not set correctly. Exiting.'
-                print err_msg
-                # utils.log(self.logging_name, 'error', err_msg)
-                sys.exit(1)
-            else:
-                key, value = linesplit
-                self.set_param(key, value)  # Store key-value in opts dictionary.
+        if self.input_args.config_fn is not None:
+            for line in open(self.input_args.config_fn, 'rU'):
+                line = line.strip()
+                if line == '' or line.find('#') > -1:  # Allow for blank lines and comments
+                    continue
+                linesplit = line.split("=")
+                if len(linesplit) == 1:  # Make sure the lines in the configuration file are set properly.
+                    err_msg = 'Configuration file line', line, ' is not set correctly. Exiting.'
+                    print err_msg
+                    # utils.log(self.logging_name, 'error', err_msg)
+                    sys.exit(1)
+                else:
+                    key, value = linesplit
+                    self.set_param(key, value)  # Store key-value in opts dictionary.
 
         log_msgs = []
         # Store all the arguments into the self.opts dictionary.
@@ -171,8 +177,17 @@ class ParamManager(object):
         if self.fnc_cmd == 'prepare_reference_data':
             required = ['reference_data_dir', 'reference_fasta', 'targets_bed_file']
 
+        if self.fnc_cmd == 'profile_data':
+            required = ['analysis_dir', 'sample_bam_file']
+
         for req in required:
-            self.get_param(req, True)
+            value = self.get_param(req, True)
+            if req == 'sample_bam_file':
+                # Check that the index is present
+                bam_file = pysam.AlignmentFile(value)
+                if not bam_file.check_index():
+                    utils.log(self.logging_name, 'debug', 'Missing an index file for the input bam file. Exiting.')
+                    sys.exit(1)
 
     def check_binaries(self):
         # Binaries required for operation: blat, gfserver, gfclient, fatotwobit, cutadapt, jellyfish
