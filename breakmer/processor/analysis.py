@@ -111,6 +111,12 @@ class RunTracker(object):
         '''
 
         start_time = time.clock()  # Track the run time.
+
+        if self.params.fnc_cmd == 'profile_data':
+            utils.log(self.logging_name, 'info', 'Profiling the coverage of the sample bam file.')
+            utils.profile_data(self.params.get_param('sample_bam_file'))
+            return
+
         self.create_targets()
 
         if self.params.fnc_cmd == 'prepare_reference_data':
