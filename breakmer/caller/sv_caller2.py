@@ -21,7 +21,6 @@ __license__ = "MIT"
 
 
 class SVCallManager(object):
-
     '''
     '''
 
@@ -32,7 +31,6 @@ class SVCallManager(object):
         self.filter_manager = FilterManager(params)
 
     def resolve_sv_calls(self, contigs, target_ref_fn, target_region_values, disc_read_clusters, sv_reads):
-
         '''
         '''
 
@@ -48,7 +46,6 @@ class SVCallManager(object):
         return sv_results
 
     def make_call(self, contig, region_values, realignment_result_set):
-
         '''
         '''
 
@@ -99,7 +96,6 @@ class FilterManager(object):
         self.logging_name = 'breakmer.caller.sv_caller'
 
     def filter_result(self, sv_result):
-
         '''
         '''
 
@@ -111,7 +107,6 @@ class FilterManager(object):
         sv_result.filter = filter_result
 
     def filter_indel(self, sv_result):
-
         '''
         '''
 
