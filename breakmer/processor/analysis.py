@@ -14,7 +14,6 @@ from itertools import izip, repeat
 import breakmer.processor.target as target
 import breakmer.utils as utils
 
-
 __author__ = "Ryan Abo"
 __copyright__ = "Copyright 2015, Ryan Abo"
 __email__ = "ryanabo@gmail.com"
@@ -95,7 +94,6 @@ class RunTracker(object):
         proc_pool.map(utils.setup_ref_data, setup_params)
 
     def create_targets(self):
-
         '''
         '''
 
@@ -106,7 +104,6 @@ class RunTracker(object):
         # return targets
 
     def run(self):
-
         '''
         '''
 
@@ -143,7 +140,8 @@ class RunTracker(object):
             if not trgt.get_sv_reads():
                 continue
 
-            trgt.compare_kmers()  # Get reference and case kmers
+            # trgt.compare_kmers()  # Get reference and case kmers
+            trgt.run_assembly()
             trgt.resolve_sv()  # Build contigs and blat them against the reference genome
             # self.summary_header, trgt_summary = trgt.get_summary()
             # self.summary[trgt.name] = trgt_summary

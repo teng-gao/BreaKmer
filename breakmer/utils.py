@@ -17,6 +17,7 @@ import random
 import time
 import math
 import pysam
+from itertools import islice
 from Bio import SeqIO
 
 
@@ -25,6 +26,55 @@ __copyright__ = "Copyright 2015, Ryan Abo"
 __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
 
+def check_read_mismapping(read):
+    '''
+    '''
+
+    if read.is_duplicate or read.is_secondary or read.is_qcfail:
+        return False
+
+    edits = False
+    clips = False
+    all_matches = True
+    if read.has_tag("MD"):
+        all_matches = read.get_tag('MD') == str(len(read.query_sequence))
+    # elif read.has_tag("nM"):
+    #     all_matches = read.get_tag("nM") == 0
+    # elif read.has_tag('NM'):
+    #     all_matches = read.get_tag("NM") < 2
+    #     edits = read.get_tag("NM") >= 2
+
+    perfect_align = True if (len(read.cigartuples) == 1) and (all_matches) and (read.flag in [83, 163, 99, 147]) else False
+    if perfect_align or read.mapq == 0:
+        return False
+
+    # clip_indices = []
+    if read.cigartuples is not None:
+        for index, cigar in enumerate(read.cigartuples):
+            if cigar[0] == 4:
+                # clip_indices.append((index, cigar[1]))
+                sindex = index if index == 0 else len(read.query_sequence) - cigar[1]
+                eindex = cigar[1] + 1 if index == 0 else len(read.query_sequence)
+                seq = read.query_sequence[sindex:eindex]
+                qual = read.query_qualities[sindex:eindex]
+                if max(qual) < 1:
+                    continue
+                # clips = True
+                return True
+            elif cigar[0] in [1, 2]:
+                return True
+
+def sliding_window(seq, klen=15):
+    '''Returns a sliding window (of width klen) over data from the iterable
+       s -> (s0,s1,...s[n-1]), (s1,s2,...,sn), ...
+    '''
+    it = iter(seq)
+    result = tuple(islice(it, klen))
+    if len(result) == klen:
+        yield result
+    for elem in it:
+        result = result[1:] + (elem,)
+        yield result
 
 def profile_data(sample_bam_file):
 
@@ -502,7 +552,6 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
 
 
 def setup_ref_data(setup_params):
-
     '''
     '''
 
@@ -522,10 +571,9 @@ def setup_ref_data(setup_params):
         for direction in directions:
             target_fa_fn = os.path.join(gene_ref_path, name + '_' + direction + '_refseq.fa')
             ref_fn = extract_refseq_fa(gene, gene_ref_path, ref_fa, direction, target_fa_fn, buffer_size)
-            run_jellyfish(ref_fn, jfish_path, kmer_size)
+            # run_jellyfish(ref_fn, jfish_path, kmer_size)
 
 def trim_coords(qual_str, min_qual):
-
     '''
     '''
 
@@ -538,7 +586,6 @@ def trim_coords(qual_str, min_qual):
         return (start, end, lngth)
 
 def get_seq_readname(read):
-
     '''
     '''
 
@@ -608,6 +655,14 @@ def fq_line(read, indel_only, min_len, trim=True):
         read = trim_qual(read, 5, min_len)
     if read is not None:
         lineout = "@" + get_seq_readname(read) + "_" + add_val + "\n" + read.seq + "\n+\n" + read.qual + "\n"
+    return lineout
+
+def fq_line(read):
+    '''
+    '''
+
+    if read is not None:
+        lineout = "@" + get_seq_readname(read) + "\n" + read.seq + "\n+\n" + read.qual + "\n"
     return lineout
 
 
@@ -862,7 +917,7 @@ class fq_read:
 
 
 class FastqFile(object):
-  def __init__(self,f):
+  def __init__(self, f):
     if isinstance(f,str):
       f = open(f)
       self._f = f
@@ -918,6 +973,18 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
     return True
   else:
     return False  
+
+def run_fermi(fermi, fq_in, result_fn):
+    '''
+    '''
+    logging_name = 'breakmer.utils'
+    fermi_cmd = '%s %s > %s' % (fermi, fq_in, result_fn)
+    fermi_process = subprocess.Popen(fermi_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    output, errors = fermi_process.communicate()
+    log(logging_name, 'info', 'Fermi output %s' % output)
+    if errors != '':
+        log(logging_name, 'info', 'Fermi errors %s' % errors)
+    return
 
 def run_blat(realign_value_dict, result_fn, query_fn, scope):
 
@@ -1204,6 +1271,22 @@ def get_overlap_index_mm(a, b):
     i += 1
   return i-1
 
+# def get_kmer_list(seq, ksize):
+#     '''
+#     '''
+#     kmers = []
+#     i = 0
+#     while (i + ksize) <= len(seq):
+#         k = seq[i:i + ksize]
+#         kmers.append(k)
+#         i += 1
+#     return kmers
+
+def get_kmer_set(seq, ksize):
+    '''
+    '''
+
+    return set(seq[i:i + ksize] for i in range(len(seq) - ksize+1))
 
 def get_read_kmers(seq,l,skmers):
   kmers = []

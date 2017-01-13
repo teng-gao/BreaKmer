@@ -181,7 +181,6 @@ class RealignedSegment(object):
         return self.matches[type]
 
     def sum_indel_flank_matches(self, flank_str):
-
         '''
         '''
 
@@ -200,7 +199,6 @@ class RealignedSegment(object):
         return match_sum
 
     def set_indel_flank_matches(self):
-
         '''
         '''
 
@@ -212,7 +210,6 @@ class RealignedSegment(object):
             self.indel_flank_match[1] += self.sum_indel_flank_matches(rflank)
 
     def set_indel_locs(self):
-
         '''
         '''
 
@@ -257,7 +254,6 @@ class RealignedSegment(object):
                 self.query_brkpts[i] = self.get_size('query') - self.query_brkpts[i]
 
     def add_query_brkpt(self, brkpt):
-
         '''
         '''
 
@@ -265,7 +261,6 @@ class RealignedSegment(object):
             self.query_brkpts.append(brkpt)
 
     def get_brkpt_str(self, with_sizes=False):
-
         '''
         '''
 
@@ -286,7 +281,6 @@ class RealignedSegment(object):
         return ",".join(brkpt_out)
   
     def get_brkpt_locs(self):
-
         '''
         '''
 
@@ -296,28 +290,24 @@ class RealignedSegment(object):
         return brkpt_locs
 
     def get_gene_anno(self):
-
         '''
         '''
 
         return self.genes
 
     def get_blat_output(self):
-
         '''
         '''
 
         return "\t".join([str(x) for x in self.values])
 
     def get_len(self):
-
         '''
         '''
 
         return self.qend - self.qstart
 
     def set_gene_anno(self, annotations, query_region):
-
         '''
         '''
 
@@ -347,7 +337,6 @@ class RealignedSegment(object):
             self.genes = ",".join(ann_genes)
 
     def calcMilliBad(self):
-
         '''
         '''
 
@@ -367,7 +356,6 @@ class RealignedSegment(object):
         return bad*0.1
 
     def report_blat_hit(self):
-
         '''
         '''
 
@@ -488,7 +476,6 @@ class RealignResultSet(object):
         return indel_hit #single_res or mult_res1 or mult_res2
 
     def has_indel(self):
-
         '''
         '''
 
@@ -590,7 +577,6 @@ class RealignResultSet(object):
     #       return None
 
     def check_svs(self):
-
         '''
         '''
 
@@ -602,7 +588,6 @@ class RealignResultSet(object):
         merged_clip = [0, None]
 
         for i, realigned_segment in enumerate(self.realignments):
-            # qs, qe, blat_result, idx = clipped_qs
             utils.log(self.logging_name, 'debug', 'Blat result with start %d, end %d, chrom %s' % (realigned_segment.qstart(), realigned_segment.qend(), realigned_segment.get_name('hit')))
             gaps = self.iter_gaps(gaps, realigned_segment, i)
             if self.sv_event.qlen > merged_clip[0]:
@@ -715,14 +700,13 @@ class RealignManager(object):
         self.realign_results = None
 
     def realignment(self, contig, target_ref_fa_fn, target_region_values):
-
         '''
         '''
 
-        if contig.contig_fa_fn is None:
-            return
+        # if contig.contig_fa_fn is None:
+        #     return
 
-        self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.psl')
+        self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.%s.psl' % contig.contig_id)
         realign_dict = {'binary': self.params.get_param('blat'),
                         'database': target_ref_fa_fn
                        }
@@ -738,7 +722,7 @@ class RealignManager(object):
                             'blat_port': self.params.get_param('blat_port'),
                             'database': self.params.get_param('reference_fasta_dir')
                            }
-            self.query_res_fn = os.path.join(contig.file_path, 'blat_res.genome.psl')
+            self.query_res_fn = os.path.join(contig.file_path, 'blat_res.genome.%s.psl' % contig.contig_id)
             utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'genome')
             self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'genome')
         return self.realign_results

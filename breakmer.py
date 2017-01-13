@@ -58,6 +58,7 @@ RUN_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=100, requi
 SERVER_PARSER.add_argument('-p', '--port_number', dest='blat_port', default=None, type=int, help='The port number for the blat server. A random port number (8000-9500) will be used if not specified. [default: %(default)s]')
 SERVER_PARSER.add_argument('--hostname', dest='blat_hostname', default='localhost', help='The hostname for the blat server. Localhost will be used if not specified. [default: %(default)s]')
 SERVER_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=True, help='The configuration filename that contains additional parameters. [default: %(default)s]')
+SERVER_PARSER.add_argument('-k', '--keep_blat_server', dest='keep_blat_server', default=False, action='store_true', help='Keep the blat server alive. [default: %(default)s]')
 
 # Setup reference parser
 REF_PARSER.add_argument('-g', '--gene_list', dest='gene_list', default=None, help='Gene list to consider for analysis. [default: %(default)s]')

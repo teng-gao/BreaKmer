@@ -21,12 +21,13 @@ class SVResult(object):
     '''
     '''
 
-    def __init__(self, sv_event, sample_bam_file, contig, target_region_values, disc_reads):
+    def __init__(self, sv_event, sample_bam_file, contig, target_region_values, disc_reads, sv_reads):
         self.logging_name = 'breakmer.results.results'
         self.sample_bam = sample_bam_file
         self.sv_event = sv_event
         self.contig = contig
         self.disc_reads = disc_reads
+        self.sv_reads = sv_reads
         self.filter = False
         self.query_region = target_region_values
         self.sv_type = None
@@ -44,22 +45,22 @@ class SVResult(object):
                        'split_read_count': None,
                        'disc_read_count': 0,
                        'contig_id': contig.contig_id,
-                       'contig_seq': contig.seq.value,
+                       'contig_seq': contig.seq,
                        'sv_subtype': None,
                        'breakpoint_coverages': 0
                       }
         self.set_values()
 
     def set_values(self):
+        '''
+        '''
 
-        '''
-        '''
         if self.sv_event is None:
             self.filter = True
             return
 
         self.sv_type = self.sv_event.get_event_type()
-        self.query_cov = [0] * len(self.contig.seq.value)
+        self.query_cov = [0] * len(self.contig.seq)
         for realigned_segment in self.sv_event.realignments:
             for i in range(realigned_segment.get_coords('query')[0], realigned_segment.get_coords('query')[1]):
                 i = min(i, len(self.query_cov)-1)
@@ -71,7 +72,6 @@ class SVResult(object):
             self.set_rearrangement_values()
 
     def set_indel_values(self):
-
         '''
         '''
 
@@ -83,11 +83,10 @@ class SVResult(object):
         self.values['target_breakpoints'] = realigned_segment.get_brkpt_str(True)
         self.values['align_cigar'] = realigned_segment.cigar
         self.values['sv_type'] = 'indel'
-        self.values['split_read_count'] = ",".join([str(self.contig.get_contig_counts().get_counts(x, x, 'indel')) for x in realigned_segment.query_brkpts])
+        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x)) for x in realigned_segment.query_brkpts])
         self.values['breakpoint_coverages'] = self.get_brkpt_coverages()
 
     def set_rearrangement_values(self):
-
         '''
         '''
 
@@ -153,7 +152,7 @@ class SVResult(object):
             brkpt_counts, brkpt_kmers, brkpt_rep_filter = self.get_brkpt_counts_filt(brkpts, 'trl')
             self.breakpoint_values = {'kmers': brkpt_kmers, 'counts': brkpt_counts, 'rep_filter': brkpt_rep_filter, 'ref_pos': brkpts['r']}
             # if not self.filter_trl(valid_rearrangement, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt):
-            res_values['disc_read_count'] = self.check_disc_reads(brkpts['t'], self.disc_reads['disc'])
+            res_values['disc_read_count'] = self.check_disc_reads(brkpts['t'], self.disc_reads) # self.disc_reads.check_clusters(brkpts['t'], sv_type)
             res_values['sv_type'] = ['rearrangement']
             res_values['sv_subtype'] = ['trl']
             res_values['target_breakpoints'] = brkpts['brkpt_str']
@@ -207,7 +206,7 @@ class SVResult(object):
         brkpt_d['brkpt_str'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
         brkpt_d['r'].extend(tbrkpt)
         brkpt_d['f'].append(filt_rep_start)
-        brkpt_d['t'][target_key] = (br.get_name('hit'), tbrkpt[0])
+        brkpt_d['t'][target_key] = (br.get_name('hit'), tbrkpt[0], br.strand)
         brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
         return brkpt_d
 
@@ -432,11 +431,11 @@ class SVResult(object):
         return contained
 
     def check_disc_reads(self, brkpts, disc_reads):
-
         '''
         '''
 
         disc_read_count = 0
+        print 'Check disc reads', brkpts['other']
         if brkpts['other'][0] in disc_reads:
             for p1, p2 in disc_reads[brkpts['other'][0]]:
                 d1 = abs(p1 - brkpts['in_target'][1])
@@ -446,23 +445,23 @@ class SVResult(object):
         return disc_read_count
 
     def get_brkpt_counts_filt(self, brkpts, sv_type):
-
+        '''
         '''
 
-        '''
-
-        avg_comp, comp_vec = utils.calc_contig_complexity(self.contig.seq.value)
+        avg_comp, comp_vec = utils.calc_contig_complexity(self.contig.seq)
         brkpt_rep_filt = False
         brkpt_counts = {'n':[],'d':[],'b':[]}
         brkpt_kmers = []
         for qb in brkpts['q'][1]:
             left_idx = qb[0] - min(qb[1],5)
             right_idx = qb[0] + min(qb[2],5)
-            bc = self.contig.get_contig_counts().get_counts(left_idx, right_idx, sv_type)
+            bc = [self.contig.get_brkpt_coverage(x) for x in [left_idx, right_idx]]
             brkpt_counts['n'].append(min(bc))
-            brkpt_counts['d'].append(min(self.contig.get_contig_counts().get_counts((qb[0]-1), (qb[0]+1), sv_type)))
-            brkpt_counts['b'].append(self.contig.get_contig_counts().get_counts(qb[0], qb[0], sv_type))
-            brkpt_kmers.append(self.contig.get_kmer_locs()[qb[0]])
+            dc = [self.contig.get_brkpt_coverage(x) for x in [qb[0]-1, qb[0]+1]]
+            brkpt_counts['d'].append(min(dc))
+            xc = self.contig.get_brkpt_coverage(qb[0])
+            brkpt_counts['b'].append(xc)
+            brkpt_kmers.append(0) # self.contig.get_kmer_locs()[qb[0]])
             brkpt_rep_filt = brkpt_rep_filt or (comp_vec[qb[0]] < (avg_comp/2))
             utils.log(self.logging_name, 'debug', 'Read count around breakpoint %d: %s'%(qb[0],",".join([str(x) for x in bc])))
         utils.log(self.logging_name, 'debug', 'Kmer count around breakpoints %s'%(",".join([str(x) for x in brkpt_kmers])))

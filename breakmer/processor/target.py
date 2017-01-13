@@ -14,6 +14,7 @@ import shutil
 import pysam
 import breakmer.utils as utils
 import breakmer.assembly.assembler as assembler
+from collections import deque
 import breakmer.caller.sv_caller2 as sv_caller
 
 __author__ = "Ryan Abo"
@@ -23,7 +24,6 @@ __license__ = "MIT"
 
 
 def pe_meta(aread):
-
     '''
     '''
 
@@ -88,6 +88,243 @@ def add_discordant_pe(aread, read_d, bamfile):
             if read_positions:
                 read_d['other'].append(read_positions)
 
+class KmerHash(object):
+    '''
+    '''
+
+    def __init__(self, chrom, start, end):
+        self.kmers = set()
+        self.limit = 1000000
+        self.chrom = chrom
+        self.start = int(start)
+        self.end = int(end)
+
+    def add(self, kmer):
+        self.kmers.add(kmer)
+        if len(self.kmers) > self.limit:
+            return True
+        return False
+
+    def set_window(self, pos):
+        self.end = pos
+
+    def reset_kmers(self):
+        self.kmers = set()
+
+
+class ClusterManager(object):
+    def __init__(self):
+        self.clusters = {}
+
+    def check_read(self, read):
+        '''
+        '''
+
+        dr_flag = read.flag
+        if read.is_paired:
+            dr_flag -= 64 if read.is_read1 else 128
+
+        if dr_flag not in self.clusters:
+            self.clusters[dr_flag] = {}
+        if read.next_reference_id not in self.clusters[dr_flag]:
+            self.clusters[dr_flag][read.next_reference_id] = {'active': deque([]), 'closed': []}
+
+        # Check active clusters
+        clusters = self.clusters[dr_flag][read.next_reference_id]['active']
+        add_to_cluster = False
+        pop_indices = []
+        for i,cluster in enumerate(clusters):
+            # print '\tChecking window', win.start, win.end, read.reference_start
+            if cluster.end < read.reference_start:
+                pop_indices.append(i)
+            else:
+                # Add read to window
+                add_to_cluster = True
+                cluster.add_read(read)
+                # print '\tAdded read to cluster', dr_flag, read.next_reference_id, cluster.dr
+                break
+        if not add_to_cluster:
+            self.clusters[dr_flag][read.next_reference_id]['active'].append(ReadCluster(read))
+        for i in pop_indices:
+            # Remove cluster from active and add to closed
+            add_cluster = clusters.popleft()
+            if add_cluster.dr > 1:
+                self.clusters[dr_flag][read.next_reference_id]['closed'].append(add_cluster)
+            self.clusters[dr_flag][read.next_reference_id]['active'] = clusters
+
+    def check_cluster(self, brktps, sv_type):
+        '''
+        '''
+
+        # Check the clusters in the target based on dr_flag for strand and type.
+        # Strand + trl dr_flag = 
+        # - trl = 
+        # + inv = 
+        # - inv = 
+        # + td = 
+        # - td = 
+
+
+class ReadCluster(object):
+    def __init__(self, read, insert_size=1000):
+        self.reads = [read]
+        self.start = read.reference_start
+        self.end = self.start + insert_size + 50
+        self.dr = 1
+        self.sr = 0
+        self.n = 0
+        self.both = 0
+
+    def add_read(self, read, read_type='dr'):
+        '''
+        '''
+
+        self.reads.append(read)
+        if read_type == 'dr':
+            self.dr += 1
+        elif read_type == 'sr':
+            self.sr += 1
+        elif read_type == 'both':
+            self.both += 1
+
+    def close_win(self):
+        '''
+        '''
+
+        print 'Window closing', self.start, self.end, len(self.reads)
+
+
+class AssemblyBatch(object):
+    '''
+    '''
+
+    def __init__(self, name, index, bamfile, data_path):
+        self.index = index
+        self.fq = None
+        self.bam = None
+        self.bam_sorted = None
+        self.assembled_fq = None
+        self.nreads = 0
+        self.reads = []
+        self.start = None
+        self.last_pos = None
+        self.contig_fn = None
+        # self.batch_mers = set()
+        self.setup_files(name, bamfile, data_path)
+
+    def setup_files(self, name, bamfile, data_path):
+        '''
+        '''
+
+        self.fq = os.path.join(data_path, "%s_sv_reads_%d.fastq" % (name, self.index))
+        self.bam = pysam.Samfile(os.path.join(data_path, "%s_sv_reads_%d.bam" % (name, self.index)), 'wb', template=bamfile)
+        self.bam_sorted = os.path.join(data_path, "%s_sv_reads_%d.sorted.bam" % (name, self.index))
+
+    def check_read(self, read):
+        '''
+        '''
+
+        if self.start is None:
+            self.start = read.reference_start
+            self.add_read(read)
+            return True
+        elif abs(self.last_pos - read.reference_start) > 2*len(read.query_sequence) and self.nreads > 10000:
+            # Reject read and make it go into a new batch
+            # Close the files.
+            print 'Closing batch'
+            self.close_batch()
+            return False
+        else:
+            self.add_read(read)
+            return True
+
+    def close_batch(self):
+        '''
+        '''
+        if self.nreads > 1:
+            # Write files
+            fq_f = open(self.fq, 'w')
+            # print self.reads
+            for read in self.reads:
+                fq_f.write("@" + read.qname + "\n" + read.seq + "\n+\n" + read.qual + "\n")
+                self.bam.write(read)
+            fq_f.close()
+            self.bam.close()
+    #     utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
+            pysam.sort(self.bam.filename, self.bam_sorted.replace('.bam', ''))
+    #     utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
+            pysam.index(self.bam_sorted)
+
+    # def print_values(self):
+    #     '''
+    #     '''
+    #     print 'Assembly reads', self.index, self.fq, self.start, self.last_pos, self.nreads
+
+    def add_read(self, read):
+        '''
+        '''
+
+        # for kmer in utils.sliding_window(read.seq, 15):
+        #     self.batch_mers.add(kmer)
+        self.nreads += 1
+        self.reads.append(read)
+        self.last_pos = read.reference_start + len(read.query_sequence)
+
+
+class Contig(object):
+    def __init__(self, file_path, contig_id, seq, nreads, sv_khash):
+        self.contig_id = contig_id
+        self.seq = seq
+        self.kmers = [k for k in utils.get_kmer_set(self.seq, 15) if k in sv_khash]
+        self.nreads = nreads
+        self.file_path = file_path
+        self.contig_fa_fn = None
+        self.sv_khash = sv_khash
+        self.create_fa()
+
+    def create_fa(self, ):
+        '''
+        '''
+        # print 'Contig kmers', self.seq
+        # for kmer in self.kmers:
+        #     print kmer, self.sv_khash[kmer]
+        self.contig_fa_fn = os.path.join(self.file_path, self.contig_id + ".fa")
+        fa_f = open(self.contig_fa_fn, 'w')
+        fa_f.write(">" + self.contig_id + "\n" + self.seq)
+        fa_f.close()
+
+    def get_brkpt_coverage(self, contig_pos):
+        '''
+        '''
+
+        start = max(0, contig_pos - 14)
+        end = min(len(self.seq), contig_pos + 14)
+        print 'contig seq chunk', self.seq[start:end]
+        bp_kmers = utils.get_kmer_set(self.seq[start:end], 15)
+        # print 'Kmers', [kmer for kmer in kmers]
+        print 'Finding breakpoint coverage in contig', self.seq, contig_pos, self.nreads
+        cov = max([self.sv_khash[kmer] for kmer in bp_kmers if kmer in self.kmers])
+        # for read in reads:
+        #     readmers = utils.get_kmer_set(read.seq, 15)
+        #     jaccard_bp_kmers = float(len(set(bp_kmers).intersection(set(readmers)))) / float(len(set(bp_kmers).union(set(readmers))))
+        #     jaccard_contig = float(len(set(self.kmers).intersection(set(readmers)))) / float(len(set(self.kmers).union(set(readmers))))
+        #     if jaccard_bp_kmers > 0 and jaccard_contig > 0:
+        #         print jaccard_bp_kmers, jaccard_contig
+        #     if any(k in read.seq for k in bp_kmers):
+        #         print 'Found read', read.seq
+        #         cov += 1
+        print contig_pos, cov
+        return cov
+
+    def valid(self):
+        '''
+        '''
+
+        if len(self.kmers) < 5 or max([self.sv_khash[kmer] for kmer in self.kmers]) < 2:
+            return False
+        else:
+            return True
+
 
 class TargetManager(object):
 
@@ -111,7 +348,6 @@ class TargetManager(object):
     '''
 
     def __init__(self, intervals, params):
-
         '''
         '''
 
@@ -123,7 +359,7 @@ class TargetManager(object):
         self.paths = {}
         self.files = {}
         self.disc_reads = None
-        self.sv_reads = None
+        self.sv_reads = []
         self.cleaned_read_recs = None
         self.kmer_clusters = []
         self.kmers = {}
@@ -135,10 +371,13 @@ class TargetManager(object):
         self.repeat_mask = None
         self.logging_name = 'breakmer.processor.target'
         self.call_manager = sv_caller.SVCallManager(params)
+        self.normal_hash = None
+        self.dr_clusters = ClusterManager()
+        self.assembly_batches = []
+        self.sv_khash = {}
         self.setup()
 
     def setup(self):
-
         '''Setup the target object with the input params.
 
         Define the location (chrom, start, end), file paths, directory paths, and name.
@@ -213,24 +452,58 @@ class TargetManager(object):
 
         self.files['ref_kmer_dump_fn'] = [os.path.join(self.paths['ref_data'], self.name + '_forward_refseq.fa_dump'), os.path.join(self.paths['ref_data'], self.name + '_reverse_refseq.fa_dump')]
 
+    def hash_normal_reads(self):
+        '''
+        '''
+
+        bamfile = pysam.Samfile(self.params.opts['normal_bam_file'], 'rb')
+        buffer_size = int(self.params.get_param('buffer_size'))
+        kmer_size = int(self.params.get_param('kmer_size'))
+
+        aligned_reads = None
+        if self.normal_hash is None:
+            self.normal_hash = KmerHash(self.chrom, self.start - buffer_size, self.end + buffer_size)
+            utils.log(self.logging_name, 'debug', 'Fetching bam file reads from %s, %s %d %d' % (self.params.opts['normal_bam_file'], self.chrom, self.start - buffer_size, self.end + buffer_size))
+            aligned_reads = bamfile.fetch(self.chrom, self.start - buffer_size, self.end + buffer_size)
+        else:
+            utils.log(self.logging_name, 'debug', 'Fetching bam file reads from %s, %s %d %d' % (self.params.opts['normal_bam_file'], self.chrom, self.start - buffer_size, self.end + buffer_size))
+            aligned_reads = bamfile.fetch(self.chrom, self.normal_hash.end, self.end + buffer_size)
+            self.normal_hash.start = self.normal_hash.end
+            self.normal_hash.end = self.end
+            self.normal_hash.reset_kmers()
+
+        hit_limit = False
+        for read in aligned_reads:
+            if not utils.check_read_mismapping(read):
+                continue
+            for kmer in utils.sliding_window(read.query_sequence, kmer_size):
+                hit_limit = self.normal_hash.add(kmer)
+            if hit_limit:
+                print 'Hit limit'
+                self.normal_hash.set_window(read.reference_start)
+                break
+        print 'Normal kmers', len(self.normal_hash.kmers)
+
     def get_sv_reads(self):
-
         '''
         '''
 
-        self.extract_bam_reads('sv')
         if 'normal_bam_file' in self.params.opts:
-            self.extract_bam_reads('norm')
-            self.clean_reads('norm')
+            print 'Hashing normal read kmers'
+            self.hash_normal_reads()
 
-        check = True
-        if not self.clean_reads('sv'):
-            shutil.rmtree(self.paths['output'])
-            check = False
-        return check
+            # self.extract_bam_reads('norm')
+            # self.clean_reads('norm')
+        self.extract_bam_reads('sv')
+        # print self.dr_clusters.clusters
+
+        # check = True
+        # if not self.clean_reads('sv'):
+        #     shutil.rmtree(self.paths['output'])
+        #     check = False
+        return True
 
     def setup_read_extraction_files(self, sample_type):
-
         '''
         '''
 
@@ -240,31 +513,119 @@ class TargetManager(object):
           self.files['sv_bam'] = os.path.join(self.paths['data'], self.name + "_sv_reads.bam")
           self.files['sv_bam_sorted'] = os.path.join(self.paths['data'], self.name + "_sv_reads.sorted.bam")
 
-    def extract_bam_reads(self, sample_type):
+    # def new_extract_reads(self, reads):
+    #     '''
+    #     '''
 
+    #     self.counter += 1
+    #     for read in reads:
+
+    #         if read.is_duplicate or read.is_secondary or read.is_qcfail:
+    #             return
+
+    #         edits = False
+    #         clips = False
+    #         all_matches = True
+    #         if read.has_tag("MD"):
+    #             all_matches = read.get_tag('MD') == str(len(read.query_sequence))
+    #         # elif read.has_tag("nM"):
+    #         #     all_matches = read.get_tag("nM") == 0
+    #         # elif read.has_tag('NM'):
+    #         #     all_matches = read.get_tag("NM") < 2
+    #         #     edits = read.get_tag("NM") >= 2
+
+    #         perfect_align = True if (len(read.cigartuples) == 1) and (all_matches) and (read.flag in [83, 163, 99, 147]) else False
+    #         if perfect_align:
+    #             continue
+    #         elif read.mapq == 0:
+    #             continue
+
+    #         clip_indices = []
+    #         if read.cigartuples is not None:
+    #             for index, cigar in enumerate(read.cigartuples):
+    #                 if cigar[0] == 4:
+    #                     clip_indices.append((index, cigar[1]))
+    #                     sindex = index if index == 0 else len(read.query_sequence) - cigar[1]
+    #                     eindex = cigar[1] + 1 if index == 0 else len(read.query_sequence)
+    #                     seq = read.query_sequence[sindex:eindex]
+    #                     qual = read.query_qualities[sindex:eindex]
+    #                     if max(qual) < 3:
+    #                         continue
+    #                     clips = True
+
+    #         if clips:
+    #             add_to_win = False
+    #             pop_indices = []
+    #             for i,win in enumerate(self.clip_windows):
+    #                 if win.end < read.reference_start:
+    #                     win.close_window(self.inbam)
+    #                     pop_indices.append(i)
+    #                 else:
+    #                     add_to_win = True
+    #                     win.add_read(read)
+    #                     break
+    #             if not add_to_win:
+    #                 self.clip_windows.append(clip_window(read))
+    #             for i in pop_indices:
+    #                 self.clip_windows.popleft()
+
+    def close_dr_clusters(self):
+        '''
+        '''
+
+        rm_flags = []
+        for dr_flag in self.dr_clusters.clusters.keys():
+            keep_flag = False
+            rm_chroms = []
+            for chrom in self.dr_clusters.clusters[dr_flag].keys():
+                keep_chrom = False
+                for i,rc in enumerate(self.dr_clusters.clusters[dr_flag][chrom]['active']):
+                    if rc.dr > 1: 
+                        self.dr_clusters.clusters[dr_flag][chrom]['closed'].append(rc)
+                del self.dr_clusters.clusters[dr_flag][chrom]['active']
+                # print dr_flag, chrom, 'C:', len(self.dr_clusters.clusters[dr_flag][chrom]['closed'])
+                if len(self.dr_clusters.clusters[dr_flag][chrom]['closed']) > 0:
+                    # print 'Closed clusters', len(self.dr_clusters.clusters[dr_flag][chrom]['closed'])
+                    # for i,rc in enumerate(self.dr_clusters.clusters[dr_flag][chrom]['closed']):
+                    #     print '\t', i, 'Closed', dr_flag, chrom, rc.dr
+                    keep_chrom = True
+                if not keep_chrom:
+                    # print 'Removing chrom', dr_flag, chrom
+                    rm_chroms.append(chrom)
+            for rm_chrom in rm_chroms:
+                del self.dr_clusters.clusters[dr_flag][rm_chrom]
+            # print 'Remove chroms', rm_chroms
+            if len(rm_chroms) == self.dr_clusters.clusters.keys():
+                rm_flags.append(dr_flag)
+
+        # print 'Remove flags', rm_flags
+        for rm_flag in rm_flags:
+            del self.dr_clusters.clusters[rm_flag]
+
+    def extract_bam_reads(self, sample_type):
         '''
         '''
 
         self.setup_read_extraction_files(sample_type)
 
         bam_type = 'sample'
-        if sample_type == 'norm':
-            bam_type = 'normal'
+        # if sample_type == 'norm': 
+            # bam_type = 'normal'
 
         utils.log(self.logging_name, 'info', 'Extracting bam reads from %s to %s' % (self.params.opts['%s_bam_file' % bam_type], self.files['sv_fq']))
         
         bamfile = pysam.Samfile(self.params.opts['%s_bam_file' % bam_type], 'rb')
-        if sample_type == 'sv':
-            sv_bam = pysam.Samfile(self.files['sv_bam'], 'wb', template=bamfile)
+        # if sample_type == 'sv':
+        #     sv_bam = pysam.Samfile(self.files['sv_bam'], 'wb', template=bamfile)
 
-        read_d = {'unmapped':{},
-                  'disc':{},
-                  'sv':{},
-                  'unmapped_keep':[],
-                  'inv_reads':[],
-                  'td_reads':[],
-                  'other':[]
-                 }
+        # read_d = {'unmapped':{},
+        #           'disc':{},
+        #           'sv':{},
+        #           'unmapped_keep':[],
+        #           'inv_reads':[],
+        #           'td_reads':[],
+        #           'other':[]
+        #          }
 
         buffer_size = int(self.params.get_param('buffer_size'))
         kmer_size = int(self.params.get_param('kmer_size'))
@@ -275,128 +636,246 @@ class TargetManager(object):
         pair_indices = {}
         valid_reads = []
 
-        for aligned_read in aligned_reads:
-
-            if aligned_read.is_duplicate or aligned_read.is_qcfail:  # Skip duplicates and failures
-                continue
-            if aligned_read.is_unmapped:  # Store unmapped reads
-                read_d['unmapped'][aligned_read.qname] = aligned_read
-                continue
-
-            if aligned_read.mate_is_unmapped or aligned_read.rnext == -1:  # Indicate that mate is unmapped
-                aligned_read.mate_is_unmapped = True
-
-            proper_map = False
-            overlap_reads = False
-
-            # These two functions can operate on the first read of the pair.
-            # Check if fragment hasn't been checked yet and that the mate is mapped.
-            if aligned_read.qname not in pair_indices and not aligned_read.mate_is_unmapped:
-                add_discordant_pe(aligned_read, read_d, bamfile)
-                proper_map, overlap_reads = pe_meta(aligned_read)
-            valid_reads.append((aligned_read, proper_map, overlap_reads))
-
-            if aligned_read.qname not in pair_indices and not aligned_read.mate_is_unmapped:
-                pair_indices[aligned_read.qname] = {}
-            if aligned_read.qname in pair_indices:
-                pair_indices[aligned_read.qname][int(aligned_read.is_read1)] = len(valid_reads) - 1
-
-            # If read is mapped and mate is unmapped
-            if (aligned_read.pos >= self.start and aligned_read.pos <= self.end) and aligned_read.mapq > 0 and aligned_read.mate_is_unmapped:
-                read_d['unmapped_keep'].append(aligned_read.qname)
-        # pair_indices, valid_reads = process_reads(areads, read_d, bamfile)  # Deprecated
-
-        # for aread, proper_map, overlap_reads in valid_reads:  # Deprecated
-            # Only take soft-clips from outer regions of properly mapped reads, take all others
-            if (aligned_read.cigar is None) or (len(aligned_read.cigar) <= 1):  # cigar is a list of tuples 
-                continue
-
-        # if aligned_read.cigar and len(aligned_read.cigar) > 1:  
-            trim_coords = utils.trim_coords(aligned_read.qual, 3)  # Identify the read positions with qual > 2
-            clip_coords = utils.get_clip_coords(aligned_read.qual, aligned_read.cigar)
-
-            # Only keep reads that have a soft clip in sequence that has not been trimmed 
-            # due to low quality sequence.           
-            # if clip_coords[0] > trim_coords[0] or clip_coords[1] < trim_coords[1]:  # Deprecated
-            if clip_coords[0] <= trim_coords[0] and clip_coords[1] >= trim_coords[1]:
-                continue
-
-            sc_seq = {'clipped':[], 'buffered':[]}
-            new_clip_coords = [0, 0]
-            start_coord, end_coord = clip_coords
-            add_sc = [False, False]
-            indel_only = False
-            start_sc = start_coord > 0
-            end_sc = end_coord < len(aligned_read.qual)
-            seq = aligned_read.seq
-
-            if start_sc and end_sc:
-                add_sc = [True, True]
-            else:
-                if start_sc: 
-                    add_sc[0] = True
-                    new_clip_coords = [0, start_coord]
-                    if overlap_reads and aligned_read.is_reverse: 
-                        mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
-                        add_sc[0] = self.check_pair_overlap(mate_seq, aligned_read, [0, start_coord], 'back')
-                    if proper_map:
-                        indel_only = aligned_read.is_reverse
-                elif end_sc: 
-                    new_clip_coords = [end_coord, len(seq)]
-                    add_sc[1] = True
-                    if overlap_reads and not aligned_read.is_reverse: 
-                        mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
-                        add_sc[1] = self.check_pair_overlap(mate_seq, aligned_read, [end_coord, len(seq)], 'front')
-                    if proper_map:
-                        indel_only = (indel_only and False) if aligned_read.is_reverse else (indel_only and True)
-            final_add = add_sc[0] or add_sc[1]
-            if add_sc[0]:
-                sc_seq['buffered'].append(aligned_read.seq[0:(start_coord + kmer_size)])
-                sc_seq['clipped'].append(aligned_read.seq[0:start_coord])
-            if add_sc[1]:
-                sc_seq['buffered'].append(seq[(end_coord - kmer_size):len(seq)])
-                sc_seq['clipped'].append(seq[end_coord:len(seq)])
-            if final_add:
-                read_d['sv'][utils.get_seq_readname(aligned_read)] = (aligned_read, sc_seq, new_clip_coords, indel_only)
-        # end for loop
-
         sv_fq = open(self.files['sv_fq'], 'w')
-        sv_sc_fa = open(self.files['sv_sc_unmapped_fa'], 'w')
+        batch_index = 1
+        kmer_len = 15
+        ref_khash = {}
+        self.assembly_batches.append(AssemblyBatch(self.name, batch_index, bamfile, self.paths['data']))
+        for aligned_read in aligned_reads:
+            if aligned_read.is_duplicate or aligned_read.is_secondary or aligned_read.is_qcfail:
+                continue
 
-        for qname in read_d['unmapped_keep']:
-            if qname in read_d['unmapped']:
-                read = read_d['unmapped'][qname]
-                read_d['sv'][utils.get_seq_readname(read)] = (read, None, None, False)
-                sv_sc_fa.write(">" + read.qname + "\n" + str(read.seq) + "\n")
+            # edits = False
+            clips = False
+            all_matches = True
+            if aligned_read.has_tag("MD"):
+                all_matches = aligned_read.get_tag('MD') == str(len(aligned_read.query_sequence))
+            # elif aligned_read.has_tag("nM"):
+            #     all_matches = aligned_read.get_tag("nM") == 0
+            # elif aligned_read.has_tag('NM'):
+            #     all_matches = aligned_read.get_tag("NM") < 2
+            #     edits = aligned_read.get_tag("NM") >= 2
 
-        if not self.sv_reads:
-            self.sv_reads = {}
-        self.sv_reads[sample_type] = {}
-        for qname in read_d['sv']:
-            aligned_read, sc_seq, clip_coords, indel_only = read_d['sv'][qname]
-            self.sv_reads[sample_type][qname] = read_d['sv'][qname]
-            if sample_type == 'sv': 
-                sv_bam.write(aligned_read)
-            lout = utils.fq_line(aligned_read, indel_only, int(self.params.get_param('kmer_size')), True)
-            if lout is not None:
-                sv_fq.write(lout)
-            if sc_seq:
-                for clip_seq in sc_seq['buffered']: 
-                    sv_sc_fa.write(">" + qname + "\n" + clip_seq + "\n")
-        self.disc_reads = {'disc':read_d['disc'], 'inv':read_d['inv_reads'], 'td':read_d['td_reads'], 'other':read_d['other']}
+            perfect_align = True if (len(aligned_read.cigartuples) == 1) and (all_matches) and (aligned_read.flag in [83, 163, 99, 147]) else False
+            if perfect_align:
+                ref_kmer = aligned_read.query_sequence[0:kmer_len]
+                if ref_kmer not in ref_khash:
+                    ref_khash[ref_kmer] = 0
+                ref_khash[ref_kmer] += 1
+                # for kmer in utils.sliding_window(aligned_read.query_sequence, kmer_size):
+                #     if kmer not in ref_khash:
+                #         ref_khash[kmer] = 0
+                #     ref_khash[kmer] += 1
+                continue
+            elif aligned_read.mapq == 0:
+                continue
+
+            # clip_indices = []
+            sr_read = False
+            read_kmers = set()
+            if aligned_read.cigartuples is not None:
+                for index, cigar in enumerate(aligned_read.cigartuples):
+                    if cigar[0] == 4:
+                        # clip_indices.append((index, cigar[1]))
+                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1]
+                        eindex = cigar[1] + 1 if index == 0 else len(aligned_read.query_sequence)
+                        seq = aligned_read.query_sequence[sindex:eindex]
+                        qual = aligned_read.query_qualities[sindex:eindex]
+
+                        if max(qual) < 3:
+                            continue
+
+                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1] - kmer_len
+                        eindex = cigar[1] + 1 + kmer_len if index == 0 else len(aligned_read.query_sequence)
+                        seq = aligned_read.query_sequence[sindex:eindex]
+                        # print 'Clipped seq', seq
+                        for kmer in utils.get_kmer_set(str(seq), kmer_len):
+                            # if kmer == 'GCTACAGGAGTGGGG':
+                            #     print '\t', kmer, kmer in ref_khash, sv_khash.get(kmer)
+                            if kmer not in ref_khash:
+                                if kmer not in self.sv_khash:
+                                    self.sv_khash[kmer] = 0
+                                self.sv_khash[kmer] += 1
+                                read_kmers.add(kmer)
+                                # print kmer, sv_khash[kmer]
+                            elif kmer in self.sv_khash:
+                                # print 'Remove kmer', kmer
+                                del self.sv_khash[kmer]
+                        # clips = True
+                        sr_read = True
+                    # elif cigar[0] in [1,2]:
+                    #     sr_read = True
+
+            if sr_read:
+                if self.normal_hash is not None:
+                    if aligned_read.reference_start > self.normal_hash.end:
+                        self.hash_normal_reads()
+                    # read_kmers = set()
+                    # for kmer in utils.sliding_window(aligned_read.query_sequence, kmer_size):
+                    #     read_kmers.add(kmer)
+                    if len(read_kmers.difference(self.normal_hash.kmers)) == 0:
+                    # if len(read_kmers) == 0:
+                        continue
+
+                self.sv_reads.append(aligned_read)
+                if not self.assembly_batches[-1].check_read(aligned_read):
+                    print 'Closing assembly batch', batch_index
+                    batch_index += 1
+                    self.assembly_batches.append(AssemblyBatch(self.name, batch_index, bamfile, self.paths['data']))
+                    self.assembly_batches[-1].add_read(aligned_read)
+                # sv_bam.write(aligned_read)
+
+                # sv_kmers = 0
+                # for kmer in utils.sliding_window(aligned_read.query_sequence, kmer_size):
+                #     if kmer not in ref_khash:
+                #         if kmer not in sv_khash:
+                #             sv_khash[kmer] = 0
+                #         sv_khash[kmer] += 1
+                #         sv_kmers += 1
+
+                # if sv_kmers > 1:
+                sv_fq.write("@" + aligned_read.qname + "\n" + aligned_read.seq + "\n+\n" + aligned_read.qual + "\n")
+                # sv_fq.write(">" + aligned_read.qname + "\n" + aligned_read.seq + "\n")
+                # print 'Added read', aligned_read
+
+            if aligned_read.flag not in [83, 163, 99, 147]:
+                self.dr_clusters.check_read(aligned_read)
+
+        # Close out dr_clusters
+        self.assembly_batches[-1].close_batch()
+        self.close_dr_clusters()
+
+        # for dr_flag in self.dr_clusters.clusters.keys():
+        #     for chrom in self.dr_clusters.clusters[dr_flag].keys():
+        #         for i,rc in enumerate(self.dr_clusters.clusters[dr_flag][chrom]['closed']):
+        #             print dr_flag, chrom, rc.dr, rc.start, rc.end
+
         sv_fq.close()
-        sv_sc_fa.close()
+        # print len(sv_khash)
+        # print sv_khash
+        # sys.exit()
+
+        # for aligned_read in aligned_reads:
+
+        #     if aligned_read.is_duplicate or aligned_read.is_qcfail:  # Skip duplicates and failures
+        #         continue
+        #     if aligned_read.is_unmapped:  # Store unmapped reads
+        #         read_d['unmapped'][aligned_read.qname] = aligned_read
+        #         continue
+
+        #     if aligned_read.mate_is_unmapped or aligned_read.rnext == -1:  # Indicate that mate is unmapped
+        #         aligned_read.mate_is_unmapped = True
+
+        #     proper_map = False
+        #     overlap_reads = False
+
+        #     # These two functions can operate on the first read of the pair.
+        #     # Check if fragment hasn't been checked yet and that the mate is mapped.
+        #     if aligned_read.qname not in pair_indices and not aligned_read.mate_is_unmapped:
+        #         add_discordant_pe(aligned_read, read_d, bamfile)
+        #         proper_map, overlap_reads = pe_meta(aligned_read)
+        #     valid_reads.append((aligned_read, proper_map, overlap_reads))
+
+        #     if aligned_read.qname not in pair_indices and not aligned_read.mate_is_unmapped:
+        #         pair_indices[aligned_read.qname] = {}
+        #     if aligned_read.qname in pair_indices:
+        #         pair_indices[aligned_read.qname][int(aligned_read.is_read1)] = len(valid_reads) - 1
+
+        #     # If read is mapped and mate is unmapped
+        #     if (aligned_read.pos >= self.start and aligned_read.pos <= self.end) and aligned_read.mapq > 0 and aligned_read.mate_is_unmapped:
+        #         read_d['unmapped_keep'].append(aligned_read.qname)
+        # # pair_indices, valid_reads = process_reads(areads, read_d, bamfile)  # Deprecated
+
+        # # for aread, proper_map, overlap_reads in valid_reads:  # Deprecated
+        #     # Only take soft-clips from outer regions of properly mapped reads, take all others
+        #     if (aligned_read.cigar is None) or (len(aligned_read.cigar) <= 1):  # cigar is a list of tuples 
+        #         continue
+
+        # # if aligned_read.cigar and len(aligned_read.cigar) > 1:  
+        #     trim_coords = utils.trim_coords(aligned_read.qual, 3)  # Identify the read positions with qual > 2
+        #     clip_coords = utils.get_clip_coords(aligned_read.qual, aligned_read.cigar)
+
+        #     # Only keep reads that have a soft clip in sequence that has not been trimmed 
+        #     # due to low quality sequence.           
+        #     # if clip_coords[0] > trim_coords[0] or clip_coords[1] < trim_coords[1]:  # Deprecated
+        #     if clip_coords[0] <= trim_coords[0] and clip_coords[1] >= trim_coords[1]:
+        #         continue
+
+        #     sc_seq = {'clipped':[], 'buffered':[]}
+        #     new_clip_coords = [0, 0]
+        #     start_coord, end_coord = clip_coords
+        #     add_sc = [False, False]
+        #     indel_only = False
+        #     start_sc = start_coord > 0
+        #     end_sc = end_coord < len(aligned_read.qual)
+        #     seq = aligned_read.seq
+
+        #     if start_sc and end_sc:
+        #         add_sc = [True, True]
+        #     else:
+        #         if start_sc: 
+        #             add_sc[0] = True
+        #             new_clip_coords = [0, start_coord]
+        #             if overlap_reads and aligned_read.is_reverse: 
+        #                 mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
+        #                 add_sc[0] = self.check_pair_overlap(mate_seq, aligned_read, [0, start_coord], 'back')
+        #             if proper_map:
+        #                 indel_only = aligned_read.is_reverse
+        #         elif end_sc: 
+        #             new_clip_coords = [end_coord, len(seq)]
+        #             add_sc[1] = True
+        #             if overlap_reads and not aligned_read.is_reverse: 
+        #                 mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
+        #                 add_sc[1] = self.check_pair_overlap(mate_seq, aligned_read, [end_coord, len(seq)], 'front')
+        #             if proper_map:
+        #                 indel_only = (indel_only and False) if aligned_read.is_reverse else (indel_only and True)
+        #     final_add = add_sc[0] or add_sc[1]
+        #     if add_sc[0]:
+        #         sc_seq['buffered'].append(aligned_read.seq[0:(start_coord + kmer_size)])
+        #         sc_seq['clipped'].append(aligned_read.seq[0:start_coord])
+        #     if add_sc[1]:
+        #         sc_seq['buffered'].append(seq[(end_coord - kmer_size):len(seq)])
+        #         sc_seq['clipped'].append(seq[end_coord:len(seq)])
+        #     if final_add:
+        #         read_d['sv'][utils.get_seq_readname(aligned_read)] = (aligned_read, sc_seq, new_clip_coords, indel_only)
+        # # end for loop
+
+        # sv_fq = open(self.files['sv_fq'], 'w')
+        # sv_sc_fa = open(self.files['sv_sc_unmapped_fa'], 'w')
+
+        # for qname in read_d['unmapped_keep']:
+        #     if qname in read_d['unmapped']:
+        #         read = read_d['unmapped'][qname]
+        #         read_d['sv'][utils.get_seq_readname(read)] = (read, None, None, False)
+        #         sv_sc_fa.write(">" + read.qname + "\n" + str(read.seq) + "\n")
+
+        # if not self.sv_reads:
+        #     self.sv_reads = {}
+        # self.sv_reads[sample_type] = {}
+        # for qname in read_d['sv']:
+        #     aligned_read, sc_seq, clip_coords, indel_only = read_d['sv'][qname]
+        #     self.sv_reads[sample_type][qname] = read_d['sv'][qname]
+        #     if sample_type == 'sv': 
+        #         sv_bam.write(aligned_read)
+        #     lout = utils.fq_line(aligned_read, indel_only, int(self.params.get_param('kmer_size')), True)
+        #     if lout is not None:
+        #         sv_fq.write(lout)
+        #     if sc_seq:
+        #         for clip_seq in sc_seq['buffered']: 
+        #             sv_sc_fa.write(">" + qname + "\n" + clip_seq + "\n")
+        # self.disc_reads = {'disc':read_d['disc'], 'inv':read_d['inv_reads'], 'td':read_d['td_reads'], 'other':read_d['other']}
+        # sv_fq.close()
+        # sv_sc_fa.close()
         bamfile.close()
 
-        if sample_type == 'sv':
-            sv_bam.close()
-            utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
-            pysam.sort(self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
-            utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
-            pysam.index(self.files['sv_bam_sorted'])
+        # if sample_type == 'sv':
+        #     sv_bam.close()
+        #     utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
+        #     pysam.sort(self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
+        #     utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
+        #     pysam.index(self.files['sv_bam_sorted'])
 
     def clean_reads(self, sample_type):
-
         '''
         '''
 
@@ -418,17 +897,48 @@ class TargetManager(object):
 
         # Use these for pulling out reads after finding sample-only kmers.
         # Filter the cleaned reads to make sure soft clips were not adapters, re-write fastq
-        if not self.cleaned_read_recs:
-            self.cleaned_read_recs = {}
-        self.cleaned_read_recs[sample_type] = None
-        self.files['%s_cleaned_fq' % sample_type], self.cleaned_read_recs[sample_type] = utils.get_fastq_reads(self.files['%s_cleaned_fq' % sample_type], self.sv_reads[sample_type])
-        self.sv_reads[sample_type] = None
-        check = True
-        if len(self.cleaned_read_recs[sample_type]) == 0:
-            check = False
+        # if not self.cleaned_read_recs:
+        #     self.cleaned_read_recs = {}
+        # self.cleaned_read_recs[sample_type] = None
+        # self.files['%s_cleaned_fq' % sample_type], self.cleaned_read_recs[sample_type] = utils.get_fastq_reads(self.files['%s_cleaned_fq' % sample_type], self.sv_reads[sample_type])
+        # self.sv_reads[sample_type] = None
+        # check = True
+        # if len(self.cleaned_read_recs[sample_type]) == 0:
+        #     check = False
 
+        check = True
         utils.log(self.logging_name, 'info', 'Check there are cleaned reads %r' % check)
         return check
+
+    def run_assembly(self):
+        '''
+        '''
+
+        # Call to fermi-lite
+        # fq = self.files['sv_cleaned_fq']
+
+        print 'Run assembly'
+        for ab in self.assembly_batches:
+            if len(ab.reads) > 1:
+                contig_fn = os.path.join(self.paths['contigs'], "%s_contigs.%d.fastq" % (self.name, ab.index))
+                ab.contig_fn = contig_fn
+                utils.run_fermi(self.params.get_param('fermi'), ab.fq, contig_fn)
+                self.parse_fermi_out(contig_fn)
+
+    def parse_fermi_out(self, contig_fn):
+        '''
+        '''
+
+        print 'FERMI OUT'
+        for header,seq,qual in utils.FastqFile(contig_fn):
+            contig_values = header.split()
+            nreads = int(contig_values[1])
+            contig_id = contig_values[0].lstrip('@').split(':')[0]
+            contig_seq = seq
+            contig = Contig(self.paths['contigs'], self.name + '_contig-' + contig_id, seq, nreads, self.sv_khash)
+            print contig.seq, contig.valid()
+            if contig.valid():
+                self.contigs.append(contig)
 
     def compare_kmers(self):
 
@@ -439,21 +949,15 @@ class TargetManager(object):
         jellyfish = self.params.get_param('jellyfish')
         kmer_size = int(self.params.get_param('kmer_size'))
 
-        for i in range(len(self.files['target_ref_fn'])):
-            utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_ref_fn'][i])
-            self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_ref_fn'][i], jellyfish, kmer_size), self.kmers['ref'])
+        # for i in range(len(self.files['target_ref_fn'])):
+        #     utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_ref_fn'][i])
+        #     self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_ref_fn'][i], jellyfish, kmer_size), self.kmers['ref'])
 
-        # if 'target_altref_fn' in self.files:
-        #     for i in range(len(self.files['target_altref_fn'])):
-        #         for j in range(len(self.files['target_altref_fn'][i])):
-        #             utils.log(self.logging_name, 'info', 'Indexing kmers for reference sequence %s' % self.files['target_altref_fn'][i])
-        #             self.kmers['ref'] = utils.load_kmers(utils.run_jellyfish(self.files['target_altref_fn'][i][j], jellyfish, kmer_size), self.kmers['ref'])
-
-        utils.log(self.logging_name, 'info', 'Indexing kmers for sample sequence %s' % self.files['sv_cleaned_fq'])
+        # utils.log(self.logging_name, 'info', 'Indexing kmers for sample sequence %s' % self.files['sv_cleaned_fq'])
         self.kmers['case'] = {}
         self.kmers['case'] = utils.load_kmers(utils.run_jellyfish(self.files['sv_cleaned_fq'], jellyfish, kmer_size), self.kmers['case'])
-        self.kmers['case_sc'] = {}
-        self.kmers['case_sc'] = utils.load_kmers(utils.run_jellyfish(self.files['sv_sc_unmapped_fa'], jellyfish, kmer_size), self.kmers['case_sc'])
+        # self.kmers['case_sc'] = {}
+        # self.kmers['case_sc'] = utils.load_kmers(utils.run_jellyfish(self.files['sv_sc_unmapped_fa'], jellyfish, kmer_size), self.kmers['case_sc'])
         sc_mers = set(self.kmers['case'].keys()) & set(self.kmers['case_sc'])
         sample_only_mers = list(sc_mers.difference(set(self.kmers['ref'].keys())))
 
@@ -462,33 +966,33 @@ class TargetManager(object):
             norm_kmers = utils.load_kmers(utils.run_jellyfish(self.files['norm_cleaned_fq'], jellyfish, kmer_size), norm_kmers)
             sample_only_mers = set(sample_only_mers).difference(set(norm_kmers.keys()))
 
-        sample_only_mers = list(sample_only_mers)
 
-        # Write case only kmers out to file.
-        self.files['sample_kmers'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers.out")
-        sample_kmer_fout = open(self.files['sample_kmers'], 'w')
+        # sample_only_mers = list(sample_only_mers)
 
-        self.kmers['case_only'] = {}
-        for mer in sample_only_mers:
-            sample_kmer_fout.write("\t".join([str(x) for x in [mer, str(self.kmers['case'][mer])]]) + "\n")
-            self.kmers['case_only'][mer] = self.kmers['case'][mer]
-        sample_kmer_fout.close()
+        # # Write case only kmers out to file.
+        # self.files['sample_kmers'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers.out")
+        # sample_kmer_fout = open(self.files['sample_kmers'], 'w')
 
-        self.kmers['ref'] = {}
-        self.kmers['case'] = {}
-        self.kmers['case_sc'] = {}
+        # self.kmers['case_only'] = {}
+        # for mer in sample_only_mers:
+        #     sample_kmer_fout.write("\t".join([str(x) for x in [mer, str(self.kmers['case'][mer])]]) + "\n")
+        #     self.kmers['case_only'][mer] = self.kmers['case'][mer]
+        # sample_kmer_fout.close()
 
-        utils.log(self.logging_name, 'info', 'Writing %d sample-only kmers to file %s' % (len(self.kmers['case_only']), self.files['sample_kmers']))
-        self.files['kmer_clusters'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers_merged.out")
-        utils.log(self.logging_name, 'info', 'Writing kmer clusters to file %s' % self.files['kmer_clusters'])
+        # self.kmers['ref'] = {}
+        # self.kmers['case'] = {}
+        # self.kmers['case_sc'] = {}
+
+        # utils.log(self.logging_name, 'info', 'Writing %d sample-only kmers to file %s' % (len(self.kmers['case_only']), self.files['sample_kmers']))
+        # self.files['kmer_clusters'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers_merged.out")
+        # utils.log(self.logging_name, 'info', 'Writing kmer clusters to file %s' % self.files['kmer_clusters'])
         
-        self.contigs = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.params.get_param('read_len'))
-        self.cleaned_read_recs = None
-        self.kmers['case_only'] = {}
-        self.finalize_contigs()
+        # self.contigs = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.params.get_param('read_len'))
+        # self.cleaned_read_recs = None
+        # self.kmers['case_only'] = {}
+        # self.finalize_contigs()
 
     def finalize_contigs(self):
-
         '''
         '''
 
@@ -499,12 +1003,12 @@ class TargetManager(object):
             assembled_contig.write_contig_values(contig_id, self.files['kmer_clusters'], self.paths['contigs'])
 
     def resolve_sv(self):
-
         '''
         '''
 
         utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.contigs))
-        self.results = self.call_manager.resolve_sv_calls(self.contigs, self.files['target_ref_fn'][0], self.get_values(), self.disc_reads)
+        self.results = self.call_manager.resolve_sv_calls(self.contigs, self.files['target_ref_fn'][0], self.get_values(), self.dr_clusters, self.sv_reads)
+        sys.exit()
         # print self.results
         # sys.exit()
         # contig_iter = 1

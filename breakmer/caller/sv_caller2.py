@@ -10,6 +10,7 @@ BreaKmer sv_caller module
 import breakmer.utils as utils
 import breakmer.realignment.realign as realigner
 import breakmer.results.results as results
+import sys
 
 
 __author__ = "Ryan Abo"
@@ -30,16 +31,16 @@ class SVCallManager(object):
         self.align_manager = realigner.RealignManager(params)
         self.filter_manager = FilterManager(params)
 
-    def resolve_sv_calls(self, contigs, target_ref_fn, target_region_values, disc_reads):
+    def resolve_sv_calls(self, contigs, target_ref_fn, target_region_values, disc_read_clusters, sv_reads):
 
         '''
         '''
 
         sv_results = []
-        for assembled_contig in contigs:
-            utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
-            realignment_set = self.align_manager.realignment(assembled_contig, target_ref_fn, target_region_values)
-            sv_result = results.SVResult(self.make_call(assembled_contig, target_region_values, realignment_set), self.params.get_param('sample_bam_file'), assembled_contig, target_region_values, disc_reads)
+        for contig in contigs:
+            utils.log(self.logging_name, 'info', 'Assessing contig %s' % contig.seq)
+            realignment_set = self.align_manager.realignment(contig, target_ref_fn, target_region_values)
+            sv_result = results.SVResult(self.make_call(contig, target_region_values, realignment_set), self.params.get_param('sample_bam_file'), contig, target_region_values, disc_read_clusters, sv_reads)
             if not sv_result.filter:
                 self.filter_manager.filter_result(sv_result)
             if not sv_result.filter:
@@ -137,7 +138,7 @@ class FilterManager(object):
         utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)' % flank_match_thresh)
         in_ff, span_ff = utils.filter_by_feature(indel_segment.get_brkpt_locs(), sv_result.query_region, self.params.get_param('keep_intron_vars'))
 
-        brkpt_cov = [sv_result.contig.get_contig_counts().get_counts(x, x, 'indel') for x in indel_segment.query_brkpts]
+        brkpt_cov = [sv_result.contig.get_brkpt_coverage(x, sv_result.sv_reads) for x in indel_segment.query_brkpts]
         low_cov = min(brkpt_cov) < self.params.get_param('indel_sr_thresh')
         if not in_ff and not low_cov and flank_match_thresh:
             utils.log(self.logging_name, 'debug', 'Top hit contains whole query sequence, indel variant')
