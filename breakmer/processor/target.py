@@ -113,24 +113,31 @@ class KmerHash(object):
 
 
 class ClusterManager(object):
-    def __init__(self):
+    def __init__(self, insert_size):
+        # Store by partner chromosome and then discordance flag
         self.clusters = {}
+        self.insert_size = insert_size
 
-    def check_read(self, read):
+    def check_read(self, read, outties=False):
         '''
         '''
 
-        dr_flag = read.flag
-        if read.is_paired:
+        # Set unmapped mates to the same chrom for easy checking later
+        next_ref_name = read.reference_name if read.next_reference_id==-1 else read.next_reference_name
+        if next_ref_name not in self.clusters:
+            self.clusters[next_ref_name] = {}
+
+        dr_flag = 'outtie' if outties else read.flag
+        if not outties and read.is_paired:
             dr_flag -= 64 if read.is_read1 else 128
 
-        if dr_flag not in self.clusters:
-            self.clusters[dr_flag] = {}
-        if read.next_reference_id not in self.clusters[dr_flag]:
-            self.clusters[dr_flag][read.next_reference_id] = {'active': deque([]), 'closed': []}
+        if dr_flag not in self.clusters[next_ref_name]:
+            self.clusters[next_ref_name][dr_flag] = {'active': deque([]), 'closed': []}
+        # if read.next_reference_id not in self.clusters[dr_flag]:
+        #     self.clusters[dr_flag][read.next_reference_id] = {'active': deque([]), 'closed': []}
 
         # Check active clusters
-        clusters = self.clusters[dr_flag][read.next_reference_id]['active']
+        clusters = self.clusters[next_ref_name][dr_flag]['active']
         add_to_cluster = False
         pop_indices = []
         for i,cluster in enumerate(clusters):
@@ -140,36 +147,193 @@ class ClusterManager(object):
             else:
                 # Add read to window
                 add_to_cluster = True
+                # print read
                 cluster.add_read(read)
                 # print '\tAdded read to cluster', dr_flag, read.next_reference_id, cluster.dr
                 break
         if not add_to_cluster:
-            self.clusters[dr_flag][read.next_reference_id]['active'].append(ReadCluster(read))
+            self.clusters[next_ref_name][dr_flag]['active'].append(ReadCluster(read))
         for i in pop_indices:
             # Remove cluster from active and add to closed
             add_cluster = clusters.popleft()
             if add_cluster.dr > 1:
-                self.clusters[dr_flag][read.next_reference_id]['closed'].append(add_cluster)
-            self.clusters[dr_flag][read.next_reference_id]['active'] = clusters
+                self.clusters[next_ref_name][dr_flag]['closed'].append(add_cluster)
+            self.clusters[next_ref_name][dr_flag]['active'] = clusters
 
-    def check_cluster(self, brktps, sv_type):
+    def check_clusters(self, brkpts):
         '''
         '''
 
         # Check the clusters in the target based on dr_flag for strand and type.
         # Strand + trl dr_flag = 
-        # - trl = 
-        # + inv = 
-        # - inv = 
-        # + td = 
-        # - td = 
+        # DR_FLAG 
+        # 0 = not paired mapped forward
+        # 1 = paired, forward, mapped
+        # 
+        # Look in disc_reads.clusters for chrom2 first, then look for specific DR_FLAG
+        # 33 = + -
+        # 0 = + NA
+        # 1 = + +
+        # 49 = - -
+        # 16 = - NA
+        # 17 = - +
+        # 51 = - - same chrom inv
+        # 3 = + + same chrom inv
+        # 35 = + - same chrom
+        # 19 = - + same chrom
 
+        bp = sorted(brkpts, key=lambda brkpt: brkpt[0], reverse=True) 
+        # print bp
+        ndiscordant_reads = 0
+        for i, v1 in enumerate(bp):
+            in_target, chrom, pos, strand = v1
+            # print in_target, chrom, pos, strand
+            if in_target == 0:
+                break
+            for j, v2 in enumerate(bp[i+1:]):
+                in_target2, chrom2, pos2, strand2 = v2
+                # print in_target2, chrom2, pos2, strand2
+                if chrom2 in self.clusters:
+                    dr_flags = self.clusters[chrom2]
+                    dr_flag = None
+                    if (strand == '+') and (strand2 == '-') and (chrom != chrom2):
+                        # Translocation event DR_FLAG 33
+                        dr_flag = 33
+                    elif (strand == '+') and (strand2 == '+') and (chrom != chrom2):
+                        # Translocation event DR_FLAG 33
+                        dr_flag = 1
+                    elif (strand == '-') and (strand2 == '-') and (chrom != chrom2):
+                        dr_flag = 49
+                    elif (strand == '-') and (strand2 == '+') and (chrom != chrom2):
+                        dr_flag = 17
+                    if dr_flag in dr_flags:
+                        for readcluster in dr_flags[dr_flag]['closed']:
+                            # Strand is '+' so look upstream, last_pos can't be past breakpoint
+                            if abs(pos - readcluster.last_pos) < self.insert_size:
+                                ndiscordant_reads += readcluster.dr
+                                # print readcluster.start, readcluster.last_pos, pos, readcluster.dr
+        return ndiscordant_reads
+
+    def check_clusters_td(self, chrom, brkpt1, brkpt2):
+        '''
+
+        There are two distinct possibilities where a contig contains a breakpoint from an inversion event. These are enumerated below:
+
+        Sample sequence is observed as this:
+                                             1A  1B +
+        ----------||---------- <DUP> ----------||---------- <DUP> ----------||----------
+        ----------||---------- <DUP> ----------||---------- <DUP> ----------||----------
+                                             2B  2A - 
+
+        Realignment to reference genome will be observed as this:
+        1.         1A+        1B+  Look for DR_FLAG - + = "outtie" with 1B < DR1, DR2, < 1A 
+            ----------(down)||----------
+
+        2.  (rc)   2A-      2B+ Look for DR_FLAG - - = 51 with 2A < DR1 < 2B and 2B < DR2
+            ----------(up)||----------
+        '''
+
+        ndiscordant_reads = 0
+        if brkpt1[1] == '+' and brkpt2[1] == '+':
+            # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
+            if chrom in self.clusters:
+                if "outtie" in self.clusters[chrom]:
+                    for readcluster in self.clusters[chrom]["outtie"]['closed']:
+                        # Strand is '+' so look upstream, last_pos can't be past breakpoint
+                        if brkpt1[0] > brkpt2[0]:
+                            # Event #1
+                            left_pos = brkpt2[0] - 10
+                            right_pos = brkpt1[0] + 10
+                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                            ndiscordant_reads += readcluster.dr
+        elif brkpt1[1] == '-' and brkpt2[1] == '-':
+            # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
+            if chrom in self.clusters:
+                if "outtie" in self.clusters[chrom]:
+                    for readcluster in self.clusters[chrom]["outtie"]['closed']:
+                        # Strand is '-' so look upstream, last_pos can't be past breakpoint
+                        if brkpt1[0] > brkpt2[0]:
+                            # Event #2
+                            left_pos = brkpt2[0] - 10
+                            right_pos = brkpt1[0] + 10
+                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                            ndiscordant_reads += readcluster.dr
+        return ndiscordant_reads
+
+
+    def check_clusters_inv(self, chrom, brkpt1, brkpt2):
+        '''
+
+        There are four distinct possibilities where a contig contains a breakpoint from an inversion event. These are enumerated below:
+
+        Sample sequence is observed as this:
+                1A  1B +                     2A  2B +
+        ----------||---------- <INV> ----------||---------- 
+        ----------||---------- <INV> ----------||---------- 
+                3B  3A -                     4B  4A - 
+
+        Realignment to reference genome will be observed as this:
+        1.         1A+        1B+  Look for DR_FLAG + + = 3 with DR1 < 1A and 1A < DR2 < 1B 
+            ----------(down)||----------
+
+        2.  (rc)   2A-      2B+ Look for DR_FLAG - - = 51 with 2A < DR1 < 2B and 2B < DR2
+            ----------(up)||----------
+
+        3.         3A+        3B- (reverse complement) Look for DR_FLAG + + = 3 with DR1 < 3B and 3B < DR2 < 3A
+            ----------(down)||----------
+
+        4.  (rc)   4A-        4B+ Look for DR_FLAG - - = 51 with 4A > DR1 and 4B < DR2 < 4A
+            ----------(down)||----------
+
+        '''
+
+        # for key in self.clusters.keys():
+        #     print key, self.clusters[key].keys()
+        #     for kk in self.clusters[key].keys():
+        #         if kk == 49:
+        #             print self.clusters[key][kk]['closed'][0].reads
+
+        ndiscordant_reads = 0
+        if brkpt1[1] == '-' and brkpt2[1] == '+':
+            # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
+            if chrom in self.clusters:
+                if 51 in self.clusters[chrom]:
+                    for readcluster in self.clusters[chrom][51]['closed']:
+                        # Strand is '-' so look upstream, last_pos can't be past breakpoint
+                        if brkpt1[0] > brkpt2[0]:
+                            # Event #4
+                            left_pos = brkpt2[0] - 10
+                            right_pos = brkpt1[0] + 10
+                        else:
+                            # Event #2
+                            left_pos = brkpt1[0] - 10
+                            right_pos = brkpt2[0] + 10
+                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                            ndiscordant_reads += readcluster.dr
+        elif brkpt1[1] == '+' and brkpt2[1] == '-':
+            # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
+            if chrom in self.clusters:
+                if 3 in self.clusters[chrom]:
+                    for readcluster in self.clusters[chrom][51]['closed']:
+                        # Strand is '-' so look upstream, last_pos can't be past breakpoint
+                        if brkpt1[0] > brkpt2[0]:
+                            # Event #3
+                            left_pos = brkpt2[0] - 10
+                            right_pos = brkpt1[0] + 10
+                        else:
+                            # Event #1
+                            left_pos = brkpt1[0] - 10
+                            right_pos = brkpt2[0] + 10
+                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                            ndiscordant_reads += readcluster.dr
+        return ndiscordant_reads
 
 class ReadCluster(object):
     def __init__(self, read, insert_size=1000):
-        self.reads = [read]
+        self.reads = [read.query_name]
         self.start = read.reference_start
         self.end = self.start + insert_size + 50
+        self.last_pos = read.reference_start + len(read.query_sequence)
         self.dr = 1
         self.sr = 0
         self.n = 0
@@ -179,9 +343,13 @@ class ReadCluster(object):
         '''
         '''
 
-        self.reads.append(read)
+        # print read.query_name
+        if read.query_name in self.reads:
+            return
+        self.reads.append(read.query_name)
         if read_type == 'dr':
             self.dr += 1
+            self.last_pos = read.reference_start + len(read.query_sequence)
         elif read_type == 'sr':
             self.sr += 1
         elif read_type == 'both':
@@ -217,7 +385,7 @@ class AssemblyBatch(object):
         '''
 
         self.fq = os.path.join(data_path, "%s_sv_reads_%d.fastq" % (name, self.index))
-        self.bam = pysam.Samfile(os.path.join(data_path, "%s_sv_reads_%d.bam" % (name, self.index)), 'wb', template=bamfile)
+        self.bam = pysam.AlignmentFile(os.path.join(data_path, "%s_sv_reads_%d.bam" % (name, self.index)), 'wb', template=bamfile)
         self.bam_sorted = os.path.join(data_path, "%s_sv_reads_%d.sorted.bam" % (name, self.index))
 
     def check_read(self, read):
@@ -272,15 +440,30 @@ class AssemblyBatch(object):
 
 
 class Contig(object):
-    def __init__(self, file_path, contig_id, seq, nreads, sv_khash):
+    def __init__(self, file_path, contig_id, seq, nreads, sv_khash, kmer_len):
         self.contig_id = contig_id
         self.seq = seq
-        self.kmers = [k for k in utils.get_kmer_set(self.seq, 15) if k in sv_khash]
+        self.kmers = {}
         self.nreads = nreads
         self.file_path = file_path
         self.contig_fa_fn = None
         self.sv_khash = sv_khash
+        self.kmer_len = kmer_len
+        self.breakpoint_coverages = {}
+        self.exact_brkpt_coverages = []
+        self.setup()
+
+    def setup(self):
+        '''
+        '''
         self.create_fa()
+        for kmer in utils.get_kmer_set(self.seq, self.kmer_len):
+            rc = utils.reverse_complement(kmer)
+            if kmer in self.sv_khash:
+                self.kmers[kmer] = self.sv_khash[kmer]
+            elif str(rc) in self.sv_khash:
+                self.kmers[kmer] = self.sv_khash[str(rc)]
+        # self.kmers [k for k in  if k in sv_khash or utils.reverse_complement(k) in sv_khash]
 
     def create_fa(self, ):
         '''
@@ -293,17 +476,21 @@ class Contig(object):
         fa_f.write(">" + self.contig_id + "\n" + self.seq)
         fa_f.close()
 
-    def get_brkpt_coverage(self, contig_pos):
+    def get_brkpt_coverage(self, contig_pos, store=False):
         '''
         '''
 
-        start = max(0, contig_pos - 14)
-        end = min(len(self.seq), contig_pos + 14)
-        print 'contig seq chunk', self.seq[start:end]
-        bp_kmers = utils.get_kmer_set(self.seq[start:end], 15)
+        if contig_pos in self.breakpoint_coverages:
+            return self.breakpoint_coverages[contig_pos]
+
+        start = max(0, contig_pos - self.kmer_len - 1)
+        end = min(len(self.seq), contig_pos + (self.kmer_len - 1))
+        # print 'contig seq chunk', self.seq[start:end]
+        bp_kmers = utils.get_kmer_set(self.seq[start:end], self.kmer_len)
         # print 'Kmers', [kmer for kmer in kmers]
-        print 'Finding breakpoint coverage in contig', self.seq, contig_pos, self.nreads
-        cov = max([self.sv_khash[kmer] for kmer in bp_kmers if kmer in self.kmers])
+        # print 'Finding breakpoint coverage in contig', contig_pos
+        cov = max([self.kmers[kmer] for kmer in bp_kmers if kmer in self.kmers])
+        self.breakpoint_coverages[contig_pos] = cov
         # for read in reads:
         #     readmers = utils.get_kmer_set(read.seq, 15)
         #     jaccard_bp_kmers = float(len(set(bp_kmers).intersection(set(readmers)))) / float(len(set(bp_kmers).union(set(readmers))))
@@ -313,14 +500,18 @@ class Contig(object):
         #     if any(k in read.seq for k in bp_kmers):
         #         print 'Found read', read.seq
         #         cov += 1
-        print contig_pos, cov
+        if store:
+            self.exact_brkpt_coverages.append(cov)
         return cov
 
     def valid(self):
         '''
         '''
 
-        if len(self.kmers) < 5 or max([self.sv_khash[kmer] for kmer in self.kmers]) < 2:
+        # for k in self.sv_khash:
+        #     print k, self.sv_khash[k]
+        # print self.seq, self.kmers, [(kmer, self.kmers[kmer]) for kmer in self.kmers]
+        if len(self.kmers) < 5 or max([self.kmers[kmer] for kmer in self.kmers]) < 2:
             return False
         else:
             return True
@@ -372,9 +563,10 @@ class TargetManager(object):
         self.logging_name = 'breakmer.processor.target'
         self.call_manager = sv_caller.SVCallManager(params)
         self.normal_hash = None
-        self.dr_clusters = ClusterManager()
+        self.dr_clusters = ClusterManager(params.get_param('insertsize_thresh'))
         self.assembly_batches = []
         self.sv_khash = {}
+        self.kmer_len = 32
         self.setup()
 
     def setup(self):
@@ -606,6 +798,8 @@ class TargetManager(object):
         '''
         '''
 
+        # kmer_len = 32
+
         self.setup_read_extraction_files(sample_type)
 
         bam_type = 'sample'
@@ -638,7 +832,6 @@ class TargetManager(object):
 
         sv_fq = open(self.files['sv_fq'], 'w')
         batch_index = 1
-        kmer_len = 15
         ref_khash = {}
         self.assembly_batches.append(AssemblyBatch(self.name, batch_index, bamfile, self.paths['data']))
         for aligned_read in aligned_reads:
@@ -658,7 +851,7 @@ class TargetManager(object):
 
             perfect_align = True if (len(aligned_read.cigartuples) == 1) and (all_matches) and (aligned_read.flag in [83, 163, 99, 147]) else False
             if perfect_align:
-                ref_kmer = aligned_read.query_sequence[0:kmer_len]
+                ref_kmer = aligned_read.query_sequence[0:self.kmer_len]
                 if ref_kmer not in ref_khash:
                     ref_khash[ref_kmer] = 0
                 ref_khash[ref_kmer] += 1
@@ -685,11 +878,11 @@ class TargetManager(object):
                         if max(qual) < 3:
                             continue
 
-                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1] - kmer_len
-                        eindex = cigar[1] + 1 + kmer_len if index == 0 else len(aligned_read.query_sequence)
+                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1] - self.kmer_len
+                        eindex = cigar[1] + 1 + self.kmer_len if index == 0 else len(aligned_read.query_sequence)
                         seq = aligned_read.query_sequence[sindex:eindex]
                         # print 'Clipped seq', seq
-                        for kmer in utils.get_kmer_set(str(seq), kmer_len):
+                        for kmer in utils.get_kmer_set(str(seq), self.kmer_len):
                             # if kmer == 'GCTACAGGAGTGGGG':
                             #     print '\t', kmer, kmer in ref_khash, sv_khash.get(kmer)
                             if kmer not in ref_khash:
@@ -740,6 +933,8 @@ class TargetManager(object):
 
             if aligned_read.flag not in [83, 163, 99, 147]:
                 self.dr_clusters.check_read(aligned_read)
+            elif utils.check_outties(aligned_read):
+                self.dr_clusters.check_read(aligned_read, True)
 
         # Close out dr_clusters
         self.assembly_batches[-1].close_batch()
@@ -917,7 +1112,7 @@ class TargetManager(object):
         # Call to fermi-lite
         # fq = self.files['sv_cleaned_fq']
 
-        print 'Run assembly'
+        # print 'Run assembly'
         for ab in self.assembly_batches:
             if len(ab.reads) > 1:
                 contig_fn = os.path.join(self.paths['contigs'], "%s_contigs.%d.fastq" % (self.name, ab.index))
@@ -929,13 +1124,13 @@ class TargetManager(object):
         '''
         '''
 
-        print 'FERMI OUT'
+        # print 'FERMI OUT'
         for header,seq,qual in utils.FastqFile(contig_fn):
             contig_values = header.split()
             nreads = int(contig_values[1])
             contig_id = contig_values[0].lstrip('@').split(':')[0]
             contig_seq = seq
-            contig = Contig(self.paths['contigs'], self.name + '_contig-' + contig_id, seq, nreads, self.sv_khash)
+            contig = Contig(self.paths['contigs'], self.name + '_contig-' + contig_id, seq, nreads, self.sv_khash, self.kmer_len)
             print contig.seq, contig.valid()
             if contig.valid():
                 self.contigs.append(contig)
@@ -1008,7 +1203,7 @@ class TargetManager(object):
 
         utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.contigs))
         self.results = self.call_manager.resolve_sv_calls(self.contigs, self.files['target_ref_fn'][0], self.get_values(), self.dr_clusters, self.sv_reads)
-        sys.exit()
+
         # print self.results
         # sys.exit()
         # contig_iter = 1
@@ -1029,21 +1224,18 @@ class TargetManager(object):
         #     contig_iter += 1
 
     def get_values(self):
-
         '''
         '''
 
         return (self.chrom, self.start, self.end, self.name, self.target_intervals)
 
     def has_results(self):
-
         '''
         '''
 
         return len(self.results) > 0
 
     def add_path(self, key, path):
-
         '''Utility function to create all the output directories.
 
         Args:

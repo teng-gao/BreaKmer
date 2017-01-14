@@ -36,11 +36,14 @@ class SVCallManager(object):
 
         sv_results = []
         for contig in contigs:
+            # print contig.seq
             utils.log(self.logging_name, 'info', 'Assessing contig %s' % contig.seq)
+            # Realign and make call
             realignment_set = self.align_manager.realignment(contig, target_ref_fn, target_region_values)
-            sv_result = results.SVResult(self.make_call(contig, target_region_values, realignment_set), self.params.get_param('sample_bam_file'), contig, target_region_values, disc_read_clusters, sv_reads)
+            sv_result = results.SVResult(self.make_call(contig, target_region_values, realignment_set), self.params, contig, target_region_values, disc_read_clusters, sv_reads)
             if not sv_result.filter:
                 self.filter_manager.filter_result(sv_result)
+            print 'Contig filtered', contig.seq, sv_result.filter
             if not sv_result.filter:
                 sv_results.append(sv_result)
         return sv_results
@@ -131,15 +134,18 @@ class FilterManager(object):
             utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d of query)'%(flank_match, fm_perc))
 
         utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)' % flank_match_thresh)
-        in_ff, span_ff = utils.filter_by_feature(indel_segment.get_brkpt_locs(), sv_result.query_region, self.params.get_param('keep_intron_vars'))
+        # in_ff, span_ff = utils.filter_by_feature(indel_segment.get_brkpt_locs(), sv_result.query_region, self.params.get_param('keep_intron_vars'))
 
-        brkpt_cov = [sv_result.contig.get_brkpt_coverage(x, sv_result.sv_reads) for x in indel_segment.query_brkpts]
+        brkpt_cov = [sv_result.contig.get_brkpt_coverage(x) for x in indel_segment.query_brkpts]
         low_cov = min(brkpt_cov) < self.params.get_param('indel_sr_thresh')
-        if not in_ff and not low_cov and flank_match_thresh:
+
+        # if not in_ff and not low_cov and flank_match_thresh:
+        if not low_cov and flank_match_thresh:
             utils.log(self.logging_name, 'debug', 'Top hit contains whole query sequence, indel variant')
         else:
             filter_result = True
-            utils.log(self.logging_name, 'debug', 'Indel in intron (%r) or low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (in_ff, low_cov, min(indel_segment.query_blocksizes)) )
+            # utils.log(self.logging_name, 'debug', 'Indel in intron (%r) or low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (in_ff, low_cov, min(indel_segment.query_blocksizes)) )
+            utils.log(self.logging_name, 'debug', 'Indel has low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (low_cov, min(indel_segment.query_blocksizes)) )
         return filter_result
 
 
@@ -154,8 +160,10 @@ class FilterManager(object):
         if nmissing_query_cov >= self.params.get_param('trl_minseg_len'):
             filter_result = True
 
-        if sv_result.values['sv_subtype'] == 'trl':
-            if max(sv_result.contig.get_contig_counts().others) >= self.params.get_param('trl_sr_thresh'):
+        # print 'Filter svs', sv_result.values, sv_result.values['sv_subtype']
+        if 'trl' in sv_result.values['sv_subtype']:
+            # print 'Filter trl', sv_result.values, max(sv_result.contig.exact_brkpt_coverages)
+            if max(sv_result.contig.exact_brkpt_coverages) >= self.params.get_param('trl_sr_thresh'):
                 filter_result = self.filter_trl(sv_result, 0.0)
         # if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
         #     # brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'rearr')
@@ -171,67 +179,68 @@ class FilterManager(object):
         #     brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'trl')
         #     disc_read_count = self.check_disc_reads(brkpts['t'], query_region, disc_reads['disc'])
                 # filter_result = self.filter_trl(valid_rearrangement, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt)
+        return filter_result
 
     def filter_rearr(self, sv_result): # query_region, params, brkpts, brkpt_counts, brkpt_kmers, rearr_type, disc_read_count):
 
         '''
         '''
 
-        in_ff, span_ff = utils.filter_by_feature(sv_result.breakpoint_values['ref_pos'], sv_result.query_region, self.params.get_param('keep_intron_vars'))
+        # in_ff, span_ff = utils.filter_by_feature(sv_result.breakpoint_values['ref_pos'], sv_result.query_region, self.params.get_param('keep_intron_vars'))
         match_sorted_realignments = sorted(sv_result.sv_event.realignments, key=lambda x: x.get_nmatch_total())
         top_realigned_segment = match_sorted_realignments[0]
 
-        check1 = (min(sv_result.breakpoint_values['counts']['n']) < self.params.get_param('rearr_sr_thresh'))
+        check1 = (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']) < self.params.get_param('rearr_sr_thresh'))
         check2 = top_realigned_segment.get_nmatch_total() < self.params.get_param('rearr_minseg_len')
-        check3 = (in_ff and span_ff)
+        # check3 = (in_ff and span_ff)
         check4 = (sv_result.values['disc_read_count'] < 1)
         check5 = (sv_result.values['sv_subtype'] == 'NA')
-        check6 = (min(sv_result.breakpoint_values['kmers']) == 0)
-        filter_result = check1 or check2 or check3 or check4 or check5 or check6
+        filter_result = check1 or check2 or check4 or check5
         utils.log(self.logging_name, 'info', 'Check filter for rearrangement')
-        utils.log(self.logging_name, 'info', 'Filter by feature for being in exon (%r) or spanning exon (%r)' % (in_ff, span_ff))
-        utils.log(self.logging_name, 'info', 'Split read threshold %d, breakpoint read counts %d' % (min(sv_result.breakpoint_values['counts']['n']), self.params.get_param('rearr_minseg_len')))
+        # utils.log(self.logging_name, 'info', 'Filter by feature for being in exon (%r) or spanning exon (%r)' % (in_ff, span_ff))
+        utils.log(self.logging_name, 'info', 'Split read threshold %d, breakpoint read counts %d' % (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('rearr_minseg_len')))
         utils.log(self.logging_name, 'info', 'Minimum segment length observed (%d) meets threshold (%d)' % (top_realigned_segment.get_nmatch_total(), self.params.get_param('rearr_minseg_len')))
         utils.log(self.logging_name, 'info', 'Minimum discordant read pairs for rearrangement (%d)' % (sv_result.values['disc_read_count']))
         return filter_result
 
     def filter_trl(self, sv_result, max_repeat): # br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, anno_genes, max_repeat, rep_filt):
-
         '''
         '''
 
-        filter_result = sv_result.valid_rearrangement[1] or (max(sv_result.breakpoint_values['counts']['d']) < self.params.get_param('trl_sr_thresh')) #or not br_valid[0]
+        # print 'Valid', sv_result.valid_rearrangement, max(sv_result.breakpoint_values['counts']['min_cov_1left_1right'])
+        filter_result = (not sv_result.valid_rearrangement[1]) or (max(sv_result.breakpoint_values['counts']['min_cov_1left_1right']) < self.params.get_param('trl_sr_thresh')) #or not br_valid[0]
         utils.log(self.logging_name, 'debug', 'Check translocation filter')
         utils.log(self.logging_name, 'debug', 'All blat result segments are within annotated or pre-specified regions %r' % sv_result.valid_rearrangement[0])
         utils.log(self.logging_name, 'debug', 'All blat result segments are within simple repeat regions that cover > 75.0 percent of the segment %r' % sv_result.valid_rearrangement[1])
-        utils.log(self.logging_name, 'debug', 'The maximum read count support around breakpoints %d meets split read threshold %d' % (max(sv_result.breakpoint_values['counts']['d']), self.params.get_param('trl_sr_thresh')))
-        utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
+        utils.log(self.logging_name, 'debug', 'The maximum read count support around breakpoints %d meets split read threshold %d' % (max(sv_result.breakpoint_values['counts']['min_cov_1left_1right']), self.params.get_param('trl_sr_thresh')))
+        # utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
         utils.log(self.logging_name, 'debug', 'The maximum repeat overlap by a blat result: %f' % max_repeat)
 
+        # print 'Filter result', filter_result
         if not filter_result:
             utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d' % (filter_result, sv_result.values['disc_read_count'])) 
             if sv_result.values['disc_read_count'] < 2:
                 match_sorted_realignments = sorted(sv_result.sv_event.realignments, key=lambda x: x.get_nmatch_total())
                 top_realigned_segment = match_sorted_realignments[0]
-                if (top_realigned_segment.get_nmatch_total() < self.params.get_param('trl_min_seg_len')) or (min(sv_result.breakpoint_values['counts']['n']) < self.params.get_param('trl_sr_thresh')) or (min(sv_result.breakpoint_values['kmers']) == 0) or sv_result.breakpoint_values['rep_filter']:
+                if (top_realigned_segment.get_nmatch_total() < self.params.get_param('trl_min_seg_len')) or (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']) < self.params.get_param('trl_sr_thresh')) or sv_result.breakpoint_values['rep_filter']:
                     utils.log(self.logging_name, 'debug', 'Shortest segment is < %d bp with %d discordant reads. Filtering.' % (self.params.get_param('trl_minseg_len'), sv_result.values['disc_read_count']))
-                    utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['n']), self.params.get_param('trl_sr_thresh')))
-                    utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
+                    utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('trl_sr_thresh')))
+                    # utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
                     filter_result = True
                 elif sv_result.values['disc_read_count'] == 0: 
                     # Check a number of metrics for shortest blat segment
                     br_qs = top_realigned_segment.qstart()
                     br_qe = top_realigned_segment.qend()
-                    low_complexity = self.minseq_complexity(sv_result.contig.seq.value[br_qs:br_qe],3) < 25.0 # Complexity of blat segment
-                    missing_qcov = self.missing_query_coverage() > 5.0
-                    short = top_realigned_segment.get_nmatch_total() <= round(float(len(sv_result.contig.seq.value))/float(4.0))
-                    utils.log(self.logging_name, 'debug', 'Checking length of shortest sequence, considered too short %r, %d, %f' % (short, top_realigned_segment.get_nmatch_total(), round(float(len(sv_result.contig.seq.value))/float(4.0))) )
+                    low_complexity = self.minseq_complexity(sv_result.contig.seq[br_qs:br_qe], 3) < 25.0 # Complexity of blat segment
+                    missing_qcov = self.missing_query_coverage(sv_result) > 5.0
+                    short = top_realigned_segment.get_nmatch_total() <= round(float(len(sv_result.contig.seq))/float(4.0))
+                    utils.log(self.logging_name, 'debug', 'Checking length of shortest sequence, considered too short %r, %d, %f' % (short, top_realigned_segment.get_nmatch_total(), round(float(len(sv_result.contig.seq))/float(4.0))) )
                     overlap = max(top_realigned_segment.seg_overlap) > 5
                     gaps_exist = max(top_realigned_segment.gaps['query'][0], top_realigned_segment.gaps['hit'][0]) > 0
                     low_uniqueness = self.check_uniqueness(match_sorted_realignments)
                     intergenic_regions = 'intergenic' in sv_result.values['anno_genes']
-                    read_strand_bias = self.check_read_strands(sv_result)
-                    check_values = [low_complexity, missing_qcov, short, overlap, gaps_exist, low_uniqueness, read_strand_bias, intergenic_regions]
+                    # read_strand_bias = self.check_read_strands(sv_result)
+                    check_values = [low_complexity, missing_qcov, short, overlap, gaps_exist, low_uniqueness, intergenic_regions]
                     utils.log(self.logging_name, 'debug', 'Discordant read count of 0 checks %s' % (",".join([str(x) for x in check_values])))
                     num_checks = 0
                     for check in check_values:
@@ -243,7 +252,6 @@ class FilterManager(object):
         return filter_result
 
     def missing_query_coverage(self, sv_result):
-
         '''
         '''
 
@@ -260,12 +268,11 @@ class FilterManager(object):
           else: 
             break
 
-        perc_missing = round((float(missing_cov)/float(len(sv_result.contig.seq.value)))*100, 4)
+        perc_missing = round((float(missing_cov)/float(len(sv_result.contig.seq)))*100, 4)
         utils.log(self.logging_name, 'debug', 'Calculated %f missing coverage of blat query sequence at beginning and end' % perc_missing)
         return perc_missing
 
     def check_read_strands(self, sv_result):
-
         '''
         '''
 
@@ -282,17 +289,16 @@ class FilterManager(object):
 
 
     def check_uniqueness(self, realigned_segments):
-
         '''
         '''
 
         low_unique = False
         for br_vals in realigned_segments:
-            if not br_vals[0].in_target:
-                if br_vals[0].mean_cov > 4:
+            if not br_vals.in_target:
+                if br_vals.mean_cov > 4:
                     low_unique = True
             else:
-                if br_vals[0].mean_cov > 10:
+                if br_vals.mean_cov > 10:
                     low_unique = True
         return low_unique
 

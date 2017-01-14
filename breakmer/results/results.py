@@ -15,15 +15,109 @@ __copyright__ = "Copyright 2015, Ryan Abo"
 __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
 
+class Breakpointer(object):
+    def __init__(self):
+        self.chroms = []
+        self.output_str = []
+        self.tcoords = []
+        self.qcoords = []
+        self.queue = [[0, 0], []]
+        self.reference_brkpt_positions = []
+        self.reference_brkpts_full = []
+        self.rep_filter_brkpts = []
+
+    '''
+        brkpts = {'t': [],
+                  'formatted': [],
+                  'r': [],
+                  'q': [[0, 0], []],
+                  'chrs': [],
+                  'brkpt_str': [],
+                  'tcoords': [],
+                  'qcoords': [],
+                  'f': []
+                 }
+    '''
+
+    def add_brkpt_info(self, blat_res, i, last_iter):
+        '''Get the breakpoint information for a given realigned segment
+        '''
+
+        # Target start and end coords
+        tstart, tend = blat_res.get_coords('hit')
+
+        # Query breakpoint start and end coords
+        qstart, qend = blat_res.get_coords('query')
+
+        # Set target key if blat result within target region
+        target_key = 1 if blat_res.in_target else 0
+
+        self.chroms.append(blat_res.get_name('hit'))
+        self.tcoords.append((tstart, tend))
+        self.qcoords.append((qstart, qend))
+
+        '''
+        Queue:
+        i = 0: 
+            queue = [[segment.start, segment.end], [[segment.end, segment.end - segment.start, None]]]
+        i > 0 and i < end:
+        i == end:
+
+        '''
+        ref_brkpt_list = []
+        filt_rep_start = None
+        if i == 0:
+            self.queue[0] = [max(0, qstart - 1), qend]
+            self.queue[1].append([qend, qend - self.queue[0][0], None])
+            # brkpt_d['q'][0] = [max(0, qs - 1), qe]
+            # brkpt_d['q'][1].append([qe, qe-brkpt_d['q'][0][0], None])
+            # tbrkpt = [tend]
+            ref_brkpt_list = [tend]
+            filt_rep_start = blat_res.filter_reps_edges[0]
+            if blat_res.strand == '-':
+                ref_brkpt_list = [tstart]
+                filt_rep_start = blat_res.filter_reps_edges[0]
+        elif last_iter: 
+            self.queue[1][-1][2] = qend - self.queue[1][-1][0]
+            self.queue[1].append([qstart, qstart - self.queue[0][0], qend - qstart])
+            ref_brkpt_list = [tstart]
+            filt_rep_start = blat_res.filter_reps_edges[0]
+            if blat_res.strand == '-':
+                ref_brkpt_list = [tend] 
+                filt_rep_start = blat_res.filter_reps_edges[1]
+        else:
+            self.queue[1][-1][2] = qend - self.queue[1][-1][1]
+            self.queue[1].append([qstart, qstart - self.queue[0][0], qend - qstart])
+            self.queue[1].append([qend, qend - qstart, None])
+            self.queue[0] = [qstart, qend]
+            # brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][1]
+            # brkpt_d['q'][1].append([qs, qs-brkpt_d['q'][0][0], qe-qs])
+            # brkpt_d['q'][1].append([qe, qe-qs, None])
+            # brkpt_d['q'][0] = [qs, qe]
+            ref_brkpt_list = [tstart, tend]
+            if blat_res.strand == "-":
+                filt_rep_start = blat_res.filter_reps_edges[1]
+                ref_brkpt_list = [tend, tstart]
+
+        # print 'Queue', i, self.queue
+        # Breakpoint locations in reference genome formatted in string, chr:pos-[pos]
+        self.output_str.append(str(blat_res.get_name('hit')) + ":" + "-".join([str(x) for x in ref_brkpt_list]))
+        # Breakpoint locations in reference genome
+        self.reference_brkpt_positions.extend(ref_brkpt_list)
+        # Repeat filter breakpoints
+        self.rep_filter_brkpts.append(filt_rep_start)
+        # Breakpoint locations in reference genome with chrom, strand and in-target indicator (1 = yes)
+        self.reference_brkpts_full.append((target_key, blat_res.get_name('hit'), ref_brkpt_list[0], blat_res.strand))
+        # brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
 
 class SVResult(object):
-
     '''
     '''
 
-    def __init__(self, sv_event, sample_bam_file, contig, target_region_values, disc_reads, sv_reads):
+    def __init__(self, sv_event, params, contig, target_region_values, disc_reads, sv_reads):
         self.logging_name = 'breakmer.results.results'
-        self.sample_bam = sample_bam_file
+        self.params = params
+        self.sample_bam = params.get_param('sample_bam_file')
         self.sv_event = sv_event
         self.contig = contig
         self.disc_reads = disc_reads
@@ -83,27 +177,16 @@ class SVResult(object):
         self.values['target_breakpoints'] = realigned_segment.get_brkpt_str(True)
         self.values['align_cigar'] = realigned_segment.cigar
         self.values['sv_type'] = 'indel'
-        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x)) for x in realigned_segment.query_brkpts])
+        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x, True)) for x in realigned_segment.query_brkpts])
         self.values['breakpoint_coverages'] = self.get_brkpt_coverages()
 
     def set_rearrangement_values(self):
         '''
         '''
 
-  # def get_svs_result(self, query_region, params, disc_reads):
         utils.log(self.logging_name, 'info', 'Resolving a rearrangement call from the realignment results')
         coord_sorted_realignments = sorted(self.sv_event.realignments, key=lambda x: x.get_coords('query')[0])
-
-        brkpts = {'t': {'in_target': None, 'other': None},
-                  'formatted': [],
-                  'r': [],
-                  'q': [[0, 0], []],
-                  'chrs': [],
-                  'brkpt_str': [],
-                  'tcoords': [],
-                  'qcoords': [],
-                  'f': []
-                 }
+        breakpointer = Breakpointer()
 
         res_values = {'target_breakpoints': [],
                       'align_cigar': [],
@@ -119,7 +202,6 @@ class SVResult(object):
 
         valid_rearrangement = [True, True]
         max_repeat = 0.0
-
         for i, realigned_segment in enumerate(coord_sorted_realignments):
             valid_rearrangement[0] = valid_rearrangement[0] and realigned_segment.valid
             # valid_rearrangement[1] = valid_rearrangement[1] and (realigned_segment.rep_man.simple_rep_overlap > 75.0)
@@ -130,33 +212,40 @@ class SVResult(object):
             res_values['align_cigar'].append(realigned_segment.cigar)
             res_values['strands'].append(realigned_segment.strand)
             res_values['mismatches'].append(realigned_segment.get_nmatches('mis'))
-            brkpts = self.get_brkpt_info(realigned_segment, brkpts, i, i==(len(self.sv_event.realignments)-1))
+            breakpointer.add_brkpt_info(realigned_segment, i, i==(len(self.sv_event.realignments) - 1))
 
-        # result = None
-        match_sorted_realignments = sorted(self.sv_event.realignments, key=lambda x: x.get_nmatch_total())
-        # self.br_sorted = sorted(self.br_sorted, key=lambda br: br[1])
+        # match_sorted_realignments = sorted(self.sv_event.realignments, key=lambda x: x.get_nmatch_total())
 
-        if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
-            brkpt_counts, brkpt_kmers, brkpt_rep_filter = self.get_brkpt_counts_filt(brkpts, 'rearr')
-            self.breakpoint_values = {'kmers': brkpt_kmers, 'counts': brkpt_counts, 'rep_filter': brkpt_rep_filter, 'ref_pos': brkpts['r']}
-            sv_type, sv_subtype, disc_read_support = self.define_rearr(self.disc_reads, brkpts['r'], res_values['strands'], brkpts['tcoords'], brkpts['qcoords'])
-            # if not self.filter_rearr(query_region, params, brkpts['r'], brkpt_counts, brkpt_kmers, rearr_type, disc_read_support):
+        # if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
+
+        # One chrom rearrangement
+        # print set(breakpointer.chroms)
+        if len(set(breakpointer.chroms)) == 1:
+            brkpt_counts, brkpt_rep_filter = self.get_brkpt_counts_filt(breakpointer)
+
+            self.breakpoint_values = {'counts': brkpt_counts, 
+                                      'rep_filter': brkpt_rep_filter, 
+                                      'ref_pos': breakpointer.reference_brkpt_positions}
+
+            # print 'Breakpoint values', self.breakpoint_values
+            sv_type, sv_subtype, disc_read_support = self.define_rearr(breakpointer.chroms[0], self.disc_reads, breakpointer, res_values['strands'])
             res_values['sv_type'] = sv_type
             res_values['sv_subtype'] = sv_subtype
             res_values['disc_read_count'] = disc_read_support
             res_values['anno_genes'] = list(set(res_values['anno_genes']))
-            res_values['target_breakpoints'] = brkpts['brkpt_str']
-            res_values['split_read_count'] = brkpt_counts['b']
+            res_values['target_breakpoints'] = breakpointer.output_str
+            res_values['split_read_count'] = brkpt_counts['exact_cov']
                 # result = self.format_result(res_values)
         else:
-            brkpt_counts, brkpt_kmers, brkpt_rep_filter = self.get_brkpt_counts_filt(brkpts, 'trl')
-            self.breakpoint_values = {'kmers': brkpt_kmers, 'counts': brkpt_counts, 'rep_filter': brkpt_rep_filter, 'ref_pos': brkpts['r']}
-            # if not self.filter_trl(valid_rearrangement, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt):
-            res_values['disc_read_count'] = self.check_disc_reads(brkpts['t'], self.disc_reads) # self.disc_reads.check_clusters(brkpts['t'], sv_type)
+            brkpt_counts, brkpt_rep_filter = self.get_brkpt_counts_filt(breakpointer)
+            self.breakpoint_values = {'counts': brkpt_counts, 
+                                      'rep_filter': brkpt_rep_filter, 
+                                      'ref_pos': breakpointer.reference_brkpt_positions}
+            res_values['disc_read_count'] = self.disc_reads.check_clusters(breakpointer.reference_brkpts_full) # self.check_disc_reads(breakpointer.reference_brkpts_full, self.disc_reads)
             res_values['sv_type'] = ['rearrangement']
             res_values['sv_subtype'] = ['trl']
-            res_values['target_breakpoints'] = brkpts['brkpt_str']
-            res_values['split_read_count'] = brkpt_counts['b']
+            res_values['target_breakpoints'] = breakpointer.output_str
+            res_values['split_read_count'] = brkpt_counts['exact_cov']
 
         for key in res_values.keys():
             if key in self.values:
@@ -164,54 +253,55 @@ class SVResult(object):
         self.values['breakpoint_coverages'] = self.get_brkpt_coverages()
         self.valid_rearrangement = valid_rearrangement
 
-    def get_brkpt_info(self, br, brkpt_d, i, last_iter):
+    # def get_brkpt_info(self, br, brkpt_d, i, last_iter):
+    #     '''Get the breakpoint information for a given realigned segment
+    #     '''
 
-        '''
-        '''
+    #     # Target start and end coords
+    #     ts, te = br.get_coords('hit')
+    #     # Query breakpoint start and end coords
+    #     qs, qe = br.get_coords('query')
+    #     # Set target key if blat result within target region
+    #     target_key = 1 if br.in_target else 0
+    #     brkpt_d['chrs'].append(br.get_name('hit'))
+    #     brkpt_d['tcoords'].append((ts, te))
+    #     brkpt_d['qcoords'].append((qs, qe))
+    #     tbrkpt = []
+    #     filt_rep_start = None
+    #     if i == 0:
+    #         brkpt_d['q'][0] = [max(0, qs - 1), qe]
+    #         brkpt_d['q'][1].append([qe, qe-brkpt_d['q'][0][0], None])
+    #         tbrkpt = [te]
+    #         filt_rep_start = br.filter_reps_edges[0]
+    #         if br.strand == '-':
+    #             tbrkpt = [ts]
+    #             filt_rep_start = br.filter_reps_edges[0]
+    #     elif last_iter: 
+    #         brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][0]
+    #         brkpt_d['q'][1].append([qs, qs-brkpt_d['q'][0][0], qe-qs])
+    #         tbrkpt = [ts]
+    #         filt_rep_start = br.filter_reps_edges[0]
+    #         if br.strand == '-':
+    #             tbrkpt = [te] 
+    #             filt_rep_start = br.filter_reps_edges[1]
+    #     else:
+    #         brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][1]
+    #         brkpt_d['q'][1].append([qs, qs-brkpt_d['q'][0][0], qe-qs])
+    #         brkpt_d['q'][1].append([qe, qe-qs, None])
+    #         brkpt_d['q'][0] = [qs, qe]
+    #         tbrkpt = [ts, te]
+    #         if br.strand == "-":
+    #             filt_rep_start = br.filter_reps_edges[1]
+    #             tbrkpt = [te, ts]
 
-        ts, te = br.get_coords('hit')
-        qs, qe = br.get_coords('query')
-        target_key = 'in_target' if br.in_target else 'other'
-        brkpt_d['chrs'].append(br.get_name('hit'))
-        brkpt_d['tcoords'].append((ts, te))
-        brkpt_d['qcoords'].append((qs, qe))
-        tbrkpt = []
-        filt_rep_start = None
-        if i == 0:
-            brkpt_d['q'][0] = [max(0, qs - 1), qe]
-            brkpt_d['q'][1].append([qe, qe-brkpt_d['q'][0][0], None])
-            tbrkpt = [te]
-            filt_rep_start = br.filter_reps_edges[0]
-            if br.strand == '-':
-                tbrkpt = [ts]
-                filt_rep_start = br.filter_reps_edges[0]
-        elif last_iter: 
-            brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][0]
-            brkpt_d['q'][1].append([qs, qs-brkpt_d['q'][0][0], qe-qs])
-            tbrkpt = [ts]
-            filt_rep_start = br.filter_reps_edges[0]
-            if br.strand == '-':
-                tbrkpt = [te] 
-                filt_rep_start = br.filter_reps_edges[1]
-        else:
-            brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][1]
-            brkpt_d['q'][1].append([qs, qs-brkpt_d['q'][0][0], qe-qs])
-            brkpt_d['q'][1].append([qe, qe-qs, None])
-            brkpt_d['q'][0] = [qs, qe]
-            tbrkpt = [ts, te]
-            if br.strand == "-":
-                filt_rep_start = br.filter_reps_edges[1]
-                tbrkpt = [te, ts]
-
-        brkpt_d['brkpt_str'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
-        brkpt_d['r'].extend(tbrkpt)
-        brkpt_d['f'].append(filt_rep_start)
-        brkpt_d['t'][target_key] = (br.get_name('hit'), tbrkpt[0], br.strand)
-        brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
-        return brkpt_d
+    #     brkpt_d['brkpt_str'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
+    #     brkpt_d['r'].extend(tbrkpt)
+    #     brkpt_d['f'].append(filt_rep_start)
+    #     brkpt_d['t'].append((target_key, br.get_name('hit'), tbrkpt[0], br.strand))
+    #     brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
+    #     return brkpt_d
 
     def get_brkpt_coverages(self):
-
         '''
         '''
 
@@ -254,7 +344,6 @@ class SVResult(object):
         return ",".join([str(x) for x in covs])
 
     def multiple_genes(self, chrs, brkpts, anno_genes):
-
         '''
         '''
 
@@ -269,7 +358,6 @@ class SVResult(object):
         return mult_genes
 
     def dup_gene_names(self, anno_genes):
-
         '''
         '''
 
@@ -281,64 +369,68 @@ class SVResult(object):
                     found_dup = True
         return found_dup
 
-    def which_rearr(self, disc_reads, brkpts, strands, tcoords, qcoords):
-
+    def which_rearr(self, chrom, disc_reads, brkpts, strands, tcoords, qcoords):
         '''
         '''
 
-        rearr_values = {'disc_read_count': None, 'sv_type': 'rearrangement', 'sv_subtype': None, 'hit': False}
-        if not self.check_overlap(tcoords[0], tcoords[1]):
-            utils.log(self.logging_name, 'debug', 'Checking rearrangement svType, strand1 %s, strand2 %s, breakpt1 %d, breakpt %d' % (strands[0], strands[1], brkpts[0], brkpts[1]))
+        rearr_values = {'disc_read_count': None, 
+                        'sv_type': 'rearrangement', 
+                        'sv_subtype': None, 
+                        'pattern_matched': False}
+
+        # The adjacent realignment segments must not overlap for an inversion or tandem dup event.
+        if not self.check_segment_overlap(tcoords[0], tcoords[1]):
+            utils.log(self.logging_name, 'debug', 'Checking rearrangement svType, strand1 %s, strand2 %s, breakpt1 %d, breakpt2 %d' % (strands[0], strands[1], brkpts[0], brkpts[1]))
+
             if strands[0] != strands[1]:
                 # Inversion
                 # Get discordantly mapped read-pairs
                 utils.log(self.logging_name, 'debug', 'Inversion event identified.')
-                rearr_values['hit'] = True
+                rearr_values['pattern_matched'] = True
                 rearr_values['sv_subtype'] = 'inversion'
-                rearr_values['disc_read_count'] = 0
-                brkpt1 = min(brkpts)
-                brkpt2 = max(brkpts)
-                bp_buffer = 20
-                for read_pair in disc_reads['inv']:
-                    r1p, r2p, r1s, r2s, qname = read_pair
-                    if r1s == 1 and r2s == 1:
-                        if (r1p <= (brkpt1 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer)):
-                            rearr_values['disc_read_count'] += 1
-                    else:
-                        if (r1p <= (brkpt2 + bp_buffer) and r1p >= (brkpt1 - bp_buffer)) and r2p >= (brkpt2 - bp_buffer):
-                            rearr_values['disc_read_count'] += 1 
+                # brkpt1 = min(brkpts)
+                # brkpt2 = max(brkpts)
+                # bp_buffer = 20
+                rearr_values['disc_read_count'] = disc_reads.check_clusters_inv(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
+                # for read_pair in disc_reads['inv']:
+                #     r1p, r2p, r1s, r2s, qname = read_pair
+                #     if r1s == 1 and r2s == 1:
+                #         if (r1p <= (brkpt1 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer)):
+                #             rearr_values['disc_read_count'] += 1
+                #     else:
+                #         if (r1p <= (brkpt2 + bp_buffer) and r1p >= (brkpt1 - bp_buffer)) and r2p >= (brkpt2 - bp_buffer):
+                #             rearr_values['disc_read_count'] += 1 
             elif strands[0] == strands[1]:
                 tgap = brkpts[1] - brkpts[0]
                 qgap = qcoords[1][0] - qcoords[0][1]
-                brkpt1 = min(brkpts)
-                brkpt2 = max(brkpts)
-                bp_buffer = 20
-                if tgap < 0:
-                    utils.log(self.logging_name, 'debug', 'Tandem duplication event identified.')
-                    rearr_values['hit'] = True
-                    rearr_values['sv_subtype'] = 'tandem_dup'
-                    rearr_values['disc_read_count'] = 0
-                    for read_pair in disc_reads['td']:
-                        r1p, r2p, r1s, r2s, qname = read_pair
-                        disc_read_check = (r1p >= (brkpt1 - bp_buffer) and r1p <= (brkpt2 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer))
-                        if disc_read_check:
-                            rearr_values['disc_read_count'] += 1
-                elif tgap > qgap:
-                    # Gapped deletion from Blast result
-                    utils.log(self.logging_name, 'debug', 'Deletion event identified.')
-                    rearr_values['hit'] = True
-                    rearr_values['sv_type'] = 'indel'
-                    rearr_values['indelSize'] = 'D' + str(tgap)
-                else:
-                    # Gapped insertion from Blast result
-                    utils.log(self.logging_name, 'debug', 'Insertion event identified.')
-                    rearr_values['hit'] = True
-                    rearr_values['sv_type'] = 'indel'
-                    rearr_values['indelSize'] = 'I' + str(qgap)
+                # brkpt1 = min(brkpts)
+                # brkpt2 = max(brkpts)
+                # bp_buffer = 20
+                # if tgap < 0:
+                utils.log(self.logging_name, 'debug', 'Tandem duplication event identified.')
+                rearr_values['hit'] = True
+                rearr_values['sv_subtype'] = 'tandem_dup'
+                rearr_values['disc_read_count'] = disc_reads.check_clusters_td(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
+                    # for read_pair in disc_reads['td']:
+                    #     r1p, r2p, r1s, r2s, qname = read_pair
+                    #     disc_read_check = (r1p >= (brkpt1 - bp_buffer) and r1p <= (brkpt2 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer))
+                    #     if disc_read_check:
+                    #         rearr_values['disc_read_count'] += 1
+                # elif tgap > qgap:
+                #     # Gapped deletion from Blast result
+                #     utils.log(self.logging_name, 'debug', 'Deletion event identified.')
+                #     rearr_values['hit'] = True
+                #     rearr_values['sv_type'] = 'indel'
+                #     rearr_values['indelSize'] = 'D' + str(tgap)
+                # else:
+                #     # Gapped insertion from Blast result
+                #     utils.log(self.logging_name, 'debug', 'Insertion event identified.')
+                #     rearr_values['hit'] = True
+                #     rearr_values['sv_type'] = 'indel'
+                #     rearr_values['indelSize'] = 'I' + str(qgap)
         return rearr_values
 
-    def define_rearr(self, disc_reads, brkpts, strands, tcoords, qcoords):
-
+    def define_rearr(self, chrom, disc_reads, breakpointer, strands):
         '''
         '''
 
@@ -375,9 +467,16 @@ class SVResult(object):
 
         rearr_hits = {}
         coord_sorted_realignments = sorted(self.sv_event.realignments, key=lambda x: x.get_coords('query')[0])
+
         for i in range(1, len(coord_sorted_realignments)):
-            vals = self.which_rearr(disc_reads, brkpts[(i - 1):(i + 1)], strands[(i - 1):(i + 1)], tcoords[(i - 1):(i + 1)], qcoords[(i - 1):(i + 1)])
-            if vals['hit']:
+            # Get two values at a time 0,1; 1,2; 2,3...
+            brkpt_pos_i = breakpointer.reference_brkpt_positions[(i - 1):(i + 1)]
+            strands_i = strands[(i - 1):(i + 1)]
+            tcoords_i = breakpointer.tcoords[(i - 1):(i + 1)]
+            qcoords_i = breakpointer.qcoords[(i - 1):(i + 1)]
+            vals = self.which_rearr(chrom, disc_reads, brkpt_pos_i, strands_i, tcoords_i, qcoords_i)
+
+            if vals['pattern_matched']:
                 if vals['sv_type'] not in rearr_hits:
                     rearr_hits[vals['sv_type']] = []
                 rearr_hits[vals['sv_type']].append(vals)
@@ -404,69 +503,110 @@ class SVResult(object):
                     self.rearr_desc.append(rearr_hits[rearr][i]['indelSize'])
 
         if sv_subtype is None:
+            ndiscordant_reads = 0
             utils.log(self.logging_name, 'debug', 'Not inversion or tandem dup, checking for odd read pairs around breakpoints')
-            utils.log(self.logging_name, 'debug', 'Not inversion or tandem dup, checking for odd read pairs around breakpoints')
-            rs = [0] * len(brkpts)
-            for i in range(len(brkpts)): 
-                b = brkpts[i]
+            ref_brkpt_discreads = [0] * len(breakpointer.reference_brkpts_full)
+            for i, ref_brkpt_values in enumerate(breakpointer.reference_brkpts_full): 
+                # b = brkpts[i]
+                target_key, chrom, pos, strand = ref_brkpt_values
+                if chrom in disc_reads.clusters:
+                    for dr_flag in disc_reads.clusters:
+                        if (strand == '+' and dr_flag < 16) or (strand == '-' and dr_flag >= 16):
+                            for read_cluster in disc_reads.clusters[dr_flag]:
+                                if abs(pos - read_cluster.last_pos) <= self.params.get_param('insertsize_thresh'):
+                                    ndiscordant_reads += read_cluster.dr
                 for read_pair in disc_reads['other']:
                     r1p, r2p, r1s, r2s, qname = read_pair
-                    if abs(r1p-b) <= 300 or abs(r2p-b) <= 300:
+                    if abs(r1p - b) <= 300 or abs(r2p-b) <= 300:
                         utils.log(self.logging_name, 'debug', 'Adding read support from read %s, with strands %d, %d and positions %d, %d for breakpoint at %d' % (qname, r1s, r2s, r1p, r2p, b))
-                        rs[i] += 1
+                        ref_brkpt_discreads[i] += 1
             rs = max(rs)
 
         return sv_type, sv_subtype, rs
 
-    def check_overlap(self, coord1, coord2):
-
-        '''
+    def check_segment_overlap(self, seg1_coords, seg2_coords):
+        '''Check if segment1 coordinates overlap with segment2 coordinates.
         '''
 
         contained = False
-        if coord1[0] >= coord2[0] and coord1[1] <= coord2[1]:
+        if seg1_coords[0] >= seg2_coords[0] and seg1_coords[1] <= seg2_coords[1]:
           contained = True
-        elif coord2[0] >= coord1[0] and coord2[1] <= coord1[1]:
+        elif seg2_coords[0] >= seg1_coords[0] and seg2_coords[1] <= seg1_coords[1]:
           contained = True
         return contained
 
-    def check_disc_reads(self, brkpts, disc_reads):
-        '''
-        '''
+    # def check_disc_reads(self, brkpts, disc_reads):
+    #     '''
+    #     '''
 
-        disc_read_count = 0
-        print 'Check disc reads', brkpts['other']
-        if brkpts['other'][0] in disc_reads:
-            for p1, p2 in disc_reads[brkpts['other'][0]]:
-                d1 = abs(p1 - brkpts['in_target'][1])
-                d2 = abs(p2 - brkpts['other'][1])
-                if d1 <= 1000 and d2 <= 1000:
-                    disc_read_count += 1
-        return disc_read_count
+    #     bp = sorted(brkpts, key=lambda brkpt: brkpt[0], reverse=True) 
+    #     print bp
+    #     for i, v1 in enumerate(bp):
+    #         in_target, chrom, pos, strand = v1
+    #         print in_target, chrom, pos, strand
+    #         if in_target == 0:
+    #             break
+    #         for j, v2 in enumerate(bp[i+1:]):
+    #             in_target2, chrom2, pos2, strand2 = v2
+    #             print in_target2, chrom2, pos2, strand2
+    #             # Look in disc_reads.clusters for chrom2 first, then look for specific DR_FLAG
+    #             # 33 = + -
+    #             # 0 = + NA
+    #             # 1 = + +
+    #             # 49 = - -
+    #             # 16 = - NA
+    #             # 49 = - + td
+    #             # 51 = - - same chrom inv
+    #             # 3 = + + same chrom inv
+    #             # 35 = + - same chrom
+    #             # 19 = - + same chrom
+    #             if chrom2 in disc_reads.clusters:
+    #                 dr_flags = disc_reads.clusters[chrom2]
+    #                 if strand == '+' and strand2 == '-' and chrom != chrom2:
+    #                     # Translocation event DR_FLAG 33
+    #                     if 33 in dr_flags:
 
-    def get_brkpt_counts_filt(self, brkpts, sv_type):
+
+
+    #     disc_read_count = 0
+    #     # print 'Check disc reads', brkpts
+    #     # print disc_reads.clusters.keys()
+    #     # if brkpts['other'][0] in disc_reads:
+    #     #     for p1, p2 in disc_reads[brkpts['other'][0]]:
+    #     #         d1 = abs(p1 - brkpts['in_target'][1])
+    #     #         d2 = abs(p2 - brkpts['other'][1])
+    #     #         if d1 <= 1000 and d2 <= 1000:
+    #     #             disc_read_count += 1
+    #     return disc_read_count
+
+    def get_brkpt_counts_filt(self, breakpointer):
         '''
         '''
 
         avg_comp, comp_vec = utils.calc_contig_complexity(self.contig.seq)
         brkpt_rep_filt = False
-        brkpt_counts = {'n':[],'d':[],'b':[]}
-        brkpt_kmers = []
-        for qb in brkpts['q'][1]:
-            left_idx = qb[0] - min(qb[1],5)
-            right_idx = qb[0] + min(qb[2],5)
-            bc = [self.contig.get_brkpt_coverage(x) for x in [left_idx, right_idx]]
-            brkpt_counts['n'].append(min(bc))
-            dc = [self.contig.get_brkpt_coverage(x) for x in [qb[0]-1, qb[0]+1]]
-            brkpt_counts['d'].append(min(dc))
-            xc = self.contig.get_brkpt_coverage(qb[0])
-            brkpt_counts['b'].append(xc)
-            brkpt_kmers.append(0) # self.contig.get_kmer_locs()[qb[0]])
-            brkpt_rep_filt = brkpt_rep_filt or (comp_vec[qb[0]] < (avg_comp/2))
-            utils.log(self.logging_name, 'debug', 'Read count around breakpoint %d: %s'%(qb[0],",".join([str(x) for x in bc])))
-        utils.log(self.logging_name, 'debug', 'Kmer count around breakpoints %s'%(",".join([str(x) for x in brkpt_kmers])))
-        brkpt_rep_filt = brkpt_rep_filt or (len(filter(lambda x: x, brkpts['f'])) > 0)
-        return brkpt_counts, brkpt_kmers, brkpt_rep_filt
+        brkpt_count_dict = {'min_cov_5left_5right': [],
+                            'min_cov_1left_1right': [], 
+                            'exact_cov':[]
+                       }
+        # brkpt_kmers = []
+        for query_brkpt in breakpointer.queue[1]:
+            # print 'Query breakpoint', query_brkpt
+            # Pad 5 bp from left and right of breakpoint 
+            left_idx = query_brkpt[0] - min(query_brkpt[1], 5)
+            right_idx = query_brkpt[0] + min(query_brkpt[2], 5)
+            # left_right_brkpt_cov = [self.contig.get_brkpt_coverage(x) for x in [left_idx, right_idx]]
+            brkpt_count_dict['min_cov_5left_5right'].append(min([self.contig.get_brkpt_coverage(x) for x in [left_idx, right_idx]]))
+            # dc = [self.contig.get_brkpt_coverage(x) for x in [query_brkpt[0] - 1, query_brkpt[0] + 1]]
+            brkpt_count_dict['min_cov_1left_1right'].append(min([self.contig.get_brkpt_coverage(x) for x in [query_brkpt[0] - 1, query_brkpt[0] + 1]]))
+            # xc = self.contig.get_brkpt_coverage(query_brkpt[0])
+            brkpt_count_dict['exact_cov'].append(self.contig.get_brkpt_coverage(query_brkpt[0], True))
+            # brkpt_kmers.append(0) # self.contig.get_kmer_locs()[query_brkpt[0]])
+            brkpt_rep_filt = brkpt_rep_filt or (comp_vec[query_brkpt[0]] < (avg_comp/2))
+            utils.log(self.logging_name, 'debug', 'Read count around breakpoint %d: %s' % (query_brkpt[0], ",".join([str(x) for x in brkpt_count_dict['min_cov_5left_5right']])))
+        # utils.log(self.logging_name, 'debug', 'Kmer count around breakpoints %s'%(",".join([str(x) for x in brkpt_kmers])))
+        brkpt_rep_filt = brkpt_rep_filt or (len(filter(lambda x: x, breakpointer.rep_filter_brkpts)) > 0)
+        return brkpt_count_dict, brkpt_rep_filt
 
     def get_output_string(self):
 

@@ -34,7 +34,6 @@ class RunTracker(object):
     """
 
     def __init__(self, params):
-
         '''
         '''
 
@@ -46,7 +45,6 @@ class RunTracker(object):
         self.summary_header = ''
 
     def preset_ref_data(self):
-
         '''
         '''
 
@@ -166,7 +164,6 @@ class RunTracker(object):
         print 'Analysis complete.'
 
     def write_output(self):
-
         '''
         '''
 

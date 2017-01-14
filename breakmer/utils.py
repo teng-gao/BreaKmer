@@ -18,13 +18,18 @@ import time
 import math
 import pysam
 from itertools import islice
-from Bio import SeqIO
+from Bio import SeqIO, Seq
 
 
 __author__ = "Ryan Abo"
 __copyright__ = "Copyright 2015, Ryan Abo"
 __email__ = "ryanabo@gmail.com"
 __license__ = "MIT"
+
+def reverse_complement(seq):
+    '''
+    '''
+    return Seq.Seq(seq).reverse_complement()
 
 def check_read_mismapping(read):
     '''
@@ -84,7 +89,7 @@ def profile_data(sample_bam_file):
     means = [random.random() for i in range(5)]
     param = 0.01
     thresh = 10
-    print means
+    # print means
 
     target_regions = []
     region = []
@@ -521,7 +526,6 @@ def run_jellyfish(fa_fn, jellyfish, kmer_size):
 
 
 def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, buffer_size):
-
     '''
     '''
 
@@ -1061,23 +1065,35 @@ def count_nmers(seq, N):
     nmers[mer] += 1
   return nmers
 
+def check_outties(read):
+    '''
+    '''
+
+    paired_and_mapped = read.is_paired and (not read.mate_is_unmapped)
+    # Read is reverse strand and mate is plus strand insert is positive indicates outtie
+    out1 = paired_and_mapped and read.is_reverse and (not read.mate_is_reverse) and (read.template_length > 0)
+    # Read is positive strand and insert is negative indicates outtie
+    out2 = paired_and_mapped and (not read.is_reverse) and (read.mate_is_reverse) and (read.template_length < 0)
+    return out1 or out2
 
 def filter_by_feature(brkpts, query_region, keep_intron_vars):
-  in_filter = False
-  span_filter = False
-  if not keep_intron_vars:
-    in_vals, span_vals = check_intervals(brkpts, query_region)
-    if in_vals[0]: 
-      if 'exon' not in in_vals[1]: 
-        in_filter = True 
-    else:
-      in_filter = True
-    if span_vals[0]:
-      if 'exon' not in span_vals[1]:
-        span_filter = True
-    else:
-      span_filter = True
-  return in_filter, span_filter
+    in_filter = False
+    span_filter = False
+    if not keep_intron_vars:
+        # print 'CHECKING INTRON VARS'
+        in_vals, span_vals = check_intervals(brkpts, query_region)
+        if in_vals[0]: 
+            if 'exon' not in in_vals[1]: 
+                in_filter = True 
+        else:
+            in_filter = True
+        if span_vals[0]:
+            if 'exon' not in span_vals[1]:
+                span_filter = True
+        else:
+            span_filter = True
+    # print in_filter, span_filter
+    return in_filter, span_filter
 
 
 def check_intervals(breakpts, query_region):
