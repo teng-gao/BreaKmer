@@ -128,12 +128,13 @@ class RunTracker(object):
         trgt_lst = self.params.targets.keys()
         trgt_lst.sort()
         for trgt_name in trgt_lst:
+            print 'ANALYZING TARGET', trgt_name, '*'*50
             trgt = self.targets[trgt_name]
             utils.log(self.logging_name, 'info', 'Analyzing %s' % trgt.name)
 
             # Write reference sequence fasta for gene if it doesn't exist.
             # if not self.params.opts['preset_ref_data']:
-            trgt.set_ref_data()
+            # trgt.set_ref_data()
 
             if not trgt.get_sv_reads():
                 continue

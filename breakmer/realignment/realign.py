@@ -51,11 +51,12 @@ class RealignedSegment(object):
         self.indel_flank_match = [0, 0]
         self.ngaps = 0
         self.score = 0
+        self.reference_brkpts_full = []
+        self.params = params
         self.parse_result(scope, params, query_region)
         # self.report_blat_hit()
 
     def parse_result(self, scope, params, query_region):
-
         '''
         '''
 
@@ -83,7 +84,7 @@ class RealignedSegment(object):
         self.vals['query'] = {'name': self.values[9],
                               'size':int(self.values[10]),
                               'coords': [int(self.values[11]), int(self.values[12])]
-                              }
+                             }
 
         self.strand = self.values[8]
 
@@ -102,12 +103,11 @@ class RealignedSegment(object):
         #   if 'repeat_mask' in d: 
         #     self.set_repeat(d['repeat_mask'],d['params'].repeat_mask)
 
-        self.set_indel_locs()
+        self.set_indel_locs(query_region)
         self.percent_identity = 100.0 - self.calcMilliBad()
 
         self.ngaps = self.get_ngap_total()
         self.score = self.get_nmatch_total() + (float(self.get_nmatch_total())/float(self.get_size('query')))
-
 
     def set_segment_overlap(self, right, left):
 
@@ -166,6 +166,7 @@ class RealignedSegment(object):
         return round((float(self.get_query_span())/float(self.get_size('query')))*100,2) 
 
     def spans_query(self):
+        # print self.get_size('query'), (self.get_coords('query')[1]- self.get_coords('query')[0])
         return self.get_size('query') == (self.get_coords('query')[1]- self.get_coords('query')[0]) 
 
     def get_ngap_total(self):
@@ -209,11 +210,17 @@ class RealignedSegment(object):
             rflank = csplit[-1]
             self.indel_flank_match[1] += self.sum_indel_flank_matches(rflank)
 
-    def set_indel_locs(self):
+    def bp_in_region(self, coord, query_region):
         '''
         '''
 
-        # chrm = 'chr'+str(self.get_name('hit'))
+        return 1 if (query_region[1] - self.params.get_param("buffer_size")) <= coord <= (query_region[2] + self.params.get_param("buffer_size")) else 0
+
+    def set_indel_locs(self, query_region):
+        '''
+        '''
+
+        chrm = str(self.get_name('hit'))
         for i in range(self.fragments['count']-1):
             if i==0 and self.fragments['query'][i][0] > 0:
                 self.cigar = str(self.fragments['query'][i][0]) + "S"
@@ -228,6 +235,7 @@ class RealignedSegment(object):
             self.cigar += str(self.query_blocksizes[i]) + "M"
             if ins_bp > 0:
                 self.breakpts.append([bp1])
+                self.reference_brkpts_full.append((self.bp_in_region(bp1, query_region), chrm, bp1, self.strand))
                 self.indel_sizes.append("I"+str(ins_bp))
                 self.add_query_brkpt(qend1)
                 self.add_query_brkpt(qstart2)
@@ -236,6 +244,8 @@ class RealignedSegment(object):
                     self.indel_maxevent_size = [ins_bp, "I"]
             if del_bp > 0:
                 self.breakpts.append([bp1, bp2])
+                self.reference_brkpts_full.append((self.bp_in_region(bp1, query_region), chrm, bp1, self.strand))
+                self.reference_brkpts_full.append((self.bp_in_region(bp2, query_region), chrm, bp2, self.strand))
                 self.indel_sizes.append("D"+str(del_bp))
                 self.add_query_brkpt(qend1)
                 self.cigar += str(del_bp) + "D"
@@ -401,6 +411,7 @@ class RealignResultSet(object):
 
         with open(self.realign_result_fn, 'rU') as realign_result_file:
             for line in realign_result_file:
+                # print 'Realign line', line
                 realigned_segment = RealignedSegment(self.scope, self.params, self.query_region, line.strip().split('\t'))
                 # score_raw = br.get_nmatch_total()
                 # ngaps = br.get_ngap_total()
@@ -415,7 +426,6 @@ class RealignResultSet(object):
         # self.blat_results = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], -blat_results[4], blat_results[1]) ) 
 
     def add_summary_metrics(self, realigned_segment):
-
         '''
         '''
 
@@ -428,7 +438,6 @@ class RealignResultSet(object):
             self.hit_freq[i] += 1
 
     def check_results_exist(self):
-
         '''
         '''
 
@@ -438,7 +447,6 @@ class RealignResultSet(object):
             self.has_results = False
 
     def write_mod_result_file(self, filename):
-
         '''
         '''
 
@@ -452,7 +460,8 @@ class RealignResultSet(object):
     #mult_res1 = (len(self.blat_results)>1 and (self.get_query_coverage()>=95.0) and (self.nmismatches<5) and (self.ngaps<3))
     #mult_res2 = self.blat_results[0][3].spans_query() and (self.blat_results[0][3].get_nmatches('mis')<5) and (self.blat_results[0][3].get_num_gaps()<3)
         # Single hit with 90% identity.
-        indel_hit = self.realignments[0].spans_query() or (len(self.realignments) == 1 and self.get_query_coverage() >= 90.0)
+        # print self.get_query_coverage()
+        indel_hit = self.realignments[0].spans_query() or (len(self.realignments) == 1 and self.get_query_coverage() >= 98.0)
     #    single_res = (len(self.blat_results)==1) and (self.get_query_coverage() >= 90.0)
     #    mult_res1 = False
     #    mult_res2 = False
@@ -487,6 +496,11 @@ class RealignResultSet(object):
             #print nmatch, ngaps, br.mean_cov
             # if i == 0 and self.check_segment_indel(realigned_segment):
             if i == 0:
+                # print realigned_segment.values
+                # print 'Has gaps', realigned_segment.has_gaps()
+                # print 'Spans query', realigned_segment.spans_query()
+                # print 'Length and in target', len(self.realignments), self.realign_result_fn
+                # print 'in target', realigned_segment.in_target
                 if realigned_segment.has_gaps() and (realigned_segment.spans_query() or (len(self.realignments) == 1 and realigned_segment.in_target)):
                     has_indel = True
                     utils.log(self.logging_name, 'info', 'Contig has indel, returning %r' % has_indel)
@@ -621,7 +635,7 @@ class RealignResultSet(object):
         utils.log(self.logging_name, 'debug', 'Blat query segment overlaps gap by %f' % over_perc)
         utils.log(self.logging_name, 'debug', 'Max segment overlap %f' % max_seg_overlap)
         utils.log(self.logging_name, 'debug', 'Event in target %r and blat result in target %r' % (self.sv_event.in_target, br.in_target))
-        if over_perc >= 50 and (max_seg_overlap < 15 or (br.in_target and self.sv_event.in_target)): # and (self.se.in_target or br.in_target): 
+        if over_perc >= 50 and (max_seg_overlap < 30 or (br.in_target and self.sv_event.in_target)): # and (self.se.in_target or br.in_target): 
             add = True
         utils.log(self.logging_name, 'debug', 'Add blat result to SV event %r' % add)
         return add
@@ -707,8 +721,12 @@ class RealignManager(object):
         #     return
 
         self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.%s.psl' % contig.contig_id)
+        chrom = target_region_values[0]
+        start = max(0, target_region_values[1] - self.params.get_param("buffer_size"))
+        end = target_region_values[2] + self.params.get_param("buffer_size")
+        blat_targeted_db = self.params.get_param('reference_fasta_2bit') + ":" + chrom + ":" + str(start) + "-" + str(end)
         realign_dict = {'binary': self.params.get_param('blat'),
-                        'database': target_ref_fa_fn
+                        'database': blat_targeted_db, #target_ref_fa_fn,
                        }
         utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'target') # Run blat against target reference sequence first for speed.
 

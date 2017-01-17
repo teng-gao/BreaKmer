@@ -41,11 +41,13 @@ class SVCallManager(object):
             # Realign and make call
             realignment_set = self.align_manager.realignment(contig, target_ref_fn, target_region_values)
             sv_result = results.SVResult(self.make_call(contig, target_region_values, realignment_set), self.params, contig, target_region_values, disc_read_clusters, sv_reads)
+            # print 'SV result', sv_result
             if not sv_result.filter:
                 self.filter_manager.filter_result(sv_result)
-            print 'Contig filtered', contig.seq, sv_result.filter
+            # print 'Contig filtered', contig.seq, sv_result.filter
             if not sv_result.filter:
                 sv_results.append(sv_result)
+        # disc_read_clusters.check_cluster_event()
         return sv_results
 
     def make_call(self, contig, region_values, realignment_result_set):
@@ -137,6 +139,7 @@ class FilterManager(object):
         # in_ff, span_ff = utils.filter_by_feature(indel_segment.get_brkpt_locs(), sv_result.query_region, self.params.get_param('keep_intron_vars'))
 
         brkpt_cov = [sv_result.contig.get_brkpt_coverage(x) for x in indel_segment.query_brkpts]
+        # print 'Breakpoint cov', brkpt_cov, indel_segment.query_brkpts
         low_cov = min(brkpt_cov) < self.params.get_param('indel_sr_thresh')
 
         # if not in_ff and not low_cov and flank_match_thresh:
@@ -162,7 +165,7 @@ class FilterManager(object):
 
         # print 'Filter svs', sv_result.values, sv_result.values['sv_subtype']
         if 'trl' in sv_result.values['sv_subtype']:
-            # print 'Filter trl', sv_result.values, max(sv_result.contig.exact_brkpt_coverages)
+            # print 'Filter trl', sv_result.values, sv_result.contig.exact_brkpt_coverages, self.params.get_param('trl_sr_thresh'), 
             if max(sv_result.contig.exact_brkpt_coverages) >= self.params.get_param('trl_sr_thresh'):
                 filter_result = self.filter_trl(sv_result, 0.0)
         # if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
@@ -191,16 +194,18 @@ class FilterManager(object):
         top_realigned_segment = match_sorted_realignments[0]
 
         check1 = (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']) < self.params.get_param('rearr_sr_thresh'))
+        # print 'Top realigned segment match total', top_realigned_segment.get_nmatch_total()
         check2 = top_realigned_segment.get_nmatch_total() < self.params.get_param('rearr_minseg_len')
         # check3 = (in_ff and span_ff)
         check4 = (sv_result.values['disc_read_count'] < 1)
-        check5 = (sv_result.values['sv_subtype'] == 'NA')
-        filter_result = check1 or check2 or check4 or check5
+        check3 = (sv_result.values['sv_subtype'] == 'NA')
+        filter_result = check1 or check2 or (check3 and check4)
         utils.log(self.logging_name, 'info', 'Check filter for rearrangement')
         # utils.log(self.logging_name, 'info', 'Filter by feature for being in exon (%r) or spanning exon (%r)' % (in_ff, span_ff))
         utils.log(self.logging_name, 'info', 'Split read threshold %d, breakpoint read counts %d' % (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('rearr_minseg_len')))
         utils.log(self.logging_name, 'info', 'Minimum segment length observed (%d) meets threshold (%d)' % (top_realigned_segment.get_nmatch_total(), self.params.get_param('rearr_minseg_len')))
         utils.log(self.logging_name, 'info', 'Minimum discordant read pairs for rearrangement (%d)' % (sv_result.values['disc_read_count']))
+        utils.log(self.logging_name, 'info', 'Returning filter result (%s), check1 (%s), check2 (%s), check3 (%s)' % (filter_result, check1, check2, check3 and check4))
         return filter_result
 
     def filter_trl(self, sv_result, max_repeat): # br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, anno_genes, max_repeat, rep_filt):

@@ -116,7 +116,52 @@ class ClusterManager(object):
     def __init__(self, insert_size):
         # Store by partner chromosome and then discordance flag
         self.clusters = {}
+        self.clip_positions_dict = None
         self.insert_size = insert_size
+
+    def check_cluster_event(self):
+        '''
+        33 = + -
+        0 = + NA
+        1 = + +
+        49 = - -
+        16 = - NA
+        17 = - +
+        51 = - - same chrom inv
+        3 = + + same chrom inv
+        35 = + - same chrom (dist > ins thresh)
+        19 = - + same chrom (dist > ins thresh)
+        outtie = 
+        '''
+
+        for chrom in self.clusters:
+            for dr_flag in self.clusters[chrom]:
+                for rc in self.clusters[chrom][dr_flag]['closed']:
+                    if rc.dr == 1:
+                        continue
+                    # Translocations
+                    if dr_flag in [33, 1, 49, 17]:
+                        print dr_flag, 'trl'
+                    # Insertions
+                    elif dr_flag in [0, 16]:
+                        print dr_flag, 'ins'
+                    # Inversions
+                    elif dr_flag in [51, 3]:
+                        print dr_flag, 'inv'
+                    # Tandem dups
+                    elif dr_flag == "outtie":
+                        print dr_flag, 'td'
+                    # Deletions
+                    elif dr_flag in [35, 19]:
+                        sc_dir = '+' if dr_flag == 35 else '-'
+                        for cp in self.clip_positions_dict:
+                            print 'Checking clip position', cp
+                            if sc_dir in self.clip_positions_dict[cp]:
+                                dc_cluster_position = rc.last_pos if dr_flag == 35 else rc.start
+                                print 'Clip position dist from cluster', dc_cluster_position, rc.last_pos, rc.start, sc_dir
+                                if abs(int(cp) - int(dc_cluster_position)) <= self.insert_size:
+                                    print 'Cluster has softclip support', cp, dr_flag, sc_dir, [x for x in self.clip_positions_dict[cp][sc_dir]]
+
 
     def check_read(self, read, outties=False):
         '''
@@ -244,8 +289,8 @@ class ClusterManager(object):
                             # Event #1
                             left_pos = brkpt2[0] - 10
                             right_pos = brkpt1[0] + 10
-                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
-                            ndiscordant_reads += readcluster.dr
+                            if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                                ndiscordant_reads += readcluster.dr
         elif brkpt1[1] == '-' and brkpt2[1] == '-':
             # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
             if chrom in self.clusters:
@@ -256,8 +301,8 @@ class ClusterManager(object):
                             # Event #2
                             left_pos = brkpt2[0] - 10
                             right_pos = brkpt1[0] + 10
-                        if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
-                            ndiscordant_reads += readcluster.dr
+                            if (left_pos < readcluster.start < right_pos) and (left_pos < readcluster.last_pos < right_pos):
+                                ndiscordant_reads += readcluster.dr
         return ndiscordant_reads
 
 
@@ -314,7 +359,7 @@ class ClusterManager(object):
             # The DR_FLAG should be - - and between brkpt1 and brkpt2 51
             if chrom in self.clusters:
                 if 3 in self.clusters[chrom]:
-                    for readcluster in self.clusters[chrom][51]['closed']:
+                    for readcluster in self.clusters[chrom][3]['closed']:
                         # Strand is '-' so look upstream, last_pos can't be past breakpoint
                         if brkpt1[0] > brkpt2[0]:
                             # Event #3
@@ -338,6 +383,12 @@ class ReadCluster(object):
         self.sr = 0
         self.n = 0
         self.both = 0
+
+    def print_values(self):
+        '''
+        '''
+
+        print self.start, self.end, self.dr
 
     def add_read(self, read, read_type='dr'):
         '''
@@ -396,7 +447,7 @@ class AssemblyBatch(object):
             self.start = read.reference_start
             self.add_read(read)
             return True
-        elif abs(self.last_pos - read.reference_start) > 2*len(read.query_sequence) and self.nreads > 10000:
+        elif abs(self.last_pos - read.reference_start) > len(read.query_sequence): # and self.nreads > 10000:
             # Reject read and make it go into a new batch
             # Close the files.
             print 'Closing batch'
@@ -440,7 +491,7 @@ class AssemblyBatch(object):
 
 
 class Contig(object):
-    def __init__(self, file_path, contig_id, seq, nreads, sv_khash, kmer_len):
+    def __init__(self, file_path, contig_id, seq, nreads, sv_khash, refmers, kmer_size):
         self.contig_id = contig_id
         self.seq = seq
         self.kmers = {}
@@ -448,22 +499,51 @@ class Contig(object):
         self.file_path = file_path
         self.contig_fa_fn = None
         self.sv_khash = sv_khash
-        self.kmer_len = kmer_len
+        self.refmers = refmers
+        self.kmer_size = kmer_size
+        self.all_kmers = {}
         self.breakpoint_coverages = {}
         self.exact_brkpt_coverages = []
+        # self.kmer_coverage_list = [0] * len(self.seq)
         self.setup()
 
     def setup(self):
         '''
         '''
-        self.create_fa()
-        for kmer in utils.get_kmer_set(self.seq, self.kmer_len):
+
+        # kiter = 0
+        for kmer in utils.get_kmer_set(self.seq, self.kmer_size):
+            # kiter = self.seq.find(kmer)
+            # if kmer not in self.all_kmers:
+            #     self.all_kmers[kmer] = []
             rc = utils.reverse_complement(kmer)
+            # self.all_kmers[kmer].append((kmer, kmer in self.sv_khash, kmer in self.refmers, rc in self.sv_khash, rc in self.refmers))
             if kmer in self.sv_khash:
+                # print 'kiter', kiter, kmer, self.sv_khash[kmer]
                 self.kmers[kmer] = self.sv_khash[kmer]
-            elif str(rc) in self.sv_khash:
-                self.kmers[kmer] = self.sv_khash[str(rc)]
+                # self.kmer_coverage_list[kiter:(kiter+len(kmer))] = map(lambda x: x + self.sv_khash[kmer], self.kmer_coverage_list[kiter:(kiter+len(kmer))])
+            elif rc in self.sv_khash:
+                # print 'kiter', kiter, kmer, self.sv_khash[rc]
+                self.kmers[kmer] = self.sv_khash[rc]
+                # self.kmer_coverage_list[kiter:(kiter+len(kmer))] = map(lambda x: x + self.sv_khash[rc], self.kmer_coverage_list[kiter:(kiter+len(kmer))])
+            # kiter += 1
+        # print 'CONTIG SETUP', self.seq, self.kmer_coverage_list
+
+        # Trim ends of contig
+        # liter = 0
+        # riter = 0
+        # while self.kmer_coverage_list[liter] < 1:
+        #     liter += 1
+        # while self.kmer_coverage_list[::-1][riter] < 1:
+        #     riter += 1
+        # print 'Old contig seq', self.seq, len(self.seq)
+        # right_trim_index = len(self.seq) - riter
+        # self.seq = self.seq[liter:right_trim_index]
+        # print 'Trimmed contig', self.seq, liter, riter, right_trim_index
+        # print 'New contig seq', self.seq
         # self.kmers [k for k in  if k in sv_khash or utils.reverse_complement(k) in sv_khash]
+
+        self.create_fa()
 
     def create_fa(self, ):
         '''
@@ -480,16 +560,24 @@ class Contig(object):
         '''
         '''
 
-        if contig_pos in self.breakpoint_coverages:
+        # print 'Calling coverage', contig_pos, store, self.breakpoint_coverages
+        if not store and contig_pos in self.breakpoint_coverages:
+            # print 'Get brkpt coverage stored', contig_pos, self.breakpoint_coverages[contig_pos]
             return self.breakpoint_coverages[contig_pos]
 
-        start = max(0, contig_pos - self.kmer_len - 1)
-        end = min(len(self.seq), contig_pos + (self.kmer_len - 1))
+        start = max(0, contig_pos - self.kmer_size - 1)
+        end = min(len(self.seq), contig_pos + (self.kmer_size - 1))
         # print 'contig seq chunk', self.seq[start:end]
-        bp_kmers = utils.get_kmer_set(self.seq[start:end], self.kmer_len)
+        bp_kmers = utils.get_kmer_set(self.seq[start:end], self.kmer_size)
         # print 'Kmers', [kmer for kmer in kmers]
-        # print 'Finding breakpoint coverage in contig', contig_pos
-        cov = max([self.kmers[kmer] for kmer in bp_kmers if kmer in self.kmers])
+        # print 'Finding breakpoint coverage in contig', self.seq, contig_pos, bp_kmers
+        # for kmer in bp_kmers:
+        #     print kmer, kmer in self.refmers, kmer in self.kmers, kmer in self.sv_khash, self.all_kmers[kmer]
+        bp_cov = [self.kmers[kmer] for kmer in bp_kmers if kmer in self.kmers]
+        cov = 0
+        if len(bp_cov) != 0:
+            cov = max([self.kmers[kmer] for kmer in bp_kmers if kmer in self.kmers])
+        
         self.breakpoint_coverages[contig_pos] = cov
         # for read in reads:
         #     readmers = utils.get_kmer_set(read.seq, 15)
@@ -502,6 +590,12 @@ class Contig(object):
         #         cov += 1
         if store:
             self.exact_brkpt_coverages.append(cov)
+
+        # print 'New brkpt coverage', bp_kmers, contig_pos, bp_cov
+        # for bp_kmer in bp_kmers:
+        #     print bp_kmer, bp_kmer in self.kmers
+        # for kmer in self.kmers:
+        #     print kmer, utils.reverse_complement(kmer), self.kmers[kmer]
         return cov
 
     def valid(self):
@@ -566,7 +660,7 @@ class TargetManager(object):
         self.dr_clusters = ClusterManager(params.get_param('insertsize_thresh'))
         self.assembly_batches = []
         self.sv_khash = {}
-        self.kmer_len = 32
+        self.ref_khash = {}
         self.setup()
 
     def setup(self):
@@ -648,7 +742,7 @@ class TargetManager(object):
         '''
         '''
 
-        bamfile = pysam.Samfile(self.params.opts['normal_bam_file'], 'rb')
+        bamfile = pysam.AlignmentFile(self.params.opts['normal_bam_file'], 'rb')
         buffer_size = int(self.params.get_param('buffer_size'))
         kmer_size = int(self.params.get_param('kmer_size'))
 
@@ -761,7 +855,7 @@ class TargetManager(object):
     #             for i in pop_indices:
     #                 self.clip_windows.popleft()
 
-    def close_dr_clusters(self):
+    def close_dr_clusters(self, clip_positions_dict):
         '''
         '''
 
@@ -794,32 +888,23 @@ class TargetManager(object):
         for rm_flag in rm_flags:
             del self.dr_clusters.clusters[rm_flag]
 
+        pos_keys = clip_positions_dict.keys()
+        for pos in pos_keys:
+            clip_dirs = clip_positions_dict[pos].keys()
+            for clip_dir in clip_dirs:
+                if len(clip_positions_dict[pos][clip_dir]) < 2:
+                    del clip_positions_dict[pos][clip_dir]
+            if len(clip_positions_dict[pos]) == 0:
+                del clip_positions_dict[pos]
+        self.dr_clusters.clip_positions_dict = clip_positions_dict
+
     def extract_bam_reads(self, sample_type):
         '''
         '''
-
-        # kmer_len = 32
-
         self.setup_read_extraction_files(sample_type)
-
         bam_type = 'sample'
-        # if sample_type == 'norm': 
-            # bam_type = 'normal'
-
         utils.log(self.logging_name, 'info', 'Extracting bam reads from %s to %s' % (self.params.opts['%s_bam_file' % bam_type], self.files['sv_fq']))
-        
-        bamfile = pysam.Samfile(self.params.opts['%s_bam_file' % bam_type], 'rb')
-        # if sample_type == 'sv':
-        #     sv_bam = pysam.Samfile(self.files['sv_bam'], 'wb', template=bamfile)
-
-        # read_d = {'unmapped':{},
-        #           'disc':{},
-        #           'sv':{},
-        #           'unmapped_keep':[],
-        #           'inv_reads':[],
-        #           'td_reads':[],
-        #           'other':[]
-        #          }
+        bamfile = pysam.AlignmentFile(self.params.opts['%s_bam_file' % bam_type], 'rb')
 
         buffer_size = int(self.params.get_param('buffer_size'))
         kmer_size = int(self.params.get_param('kmer_size'))
@@ -827,34 +912,32 @@ class TargetManager(object):
         utils.log(self.logging_name, 'debug', 'Fetching bam file reads from %s, %s %d %d' % (self.params.opts['%s_bam_file' % bam_type], self.chrom, self.start - buffer_size, self.end + buffer_size))
         aligned_reads = bamfile.fetch(self.chrom, self.start - buffer_size, self.end + buffer_size)
 
-        pair_indices = {}
-        valid_reads = []
-
         sv_fq = open(self.files['sv_fq'], 'w')
         batch_index = 1
-        ref_khash = {}
+        
+        clip_pos = {}
         self.assembly_batches.append(AssemblyBatch(self.name, batch_index, bamfile, self.paths['data']))
         for aligned_read in aligned_reads:
+            sr_read = False
             if aligned_read.is_duplicate or aligned_read.is_secondary or aligned_read.is_qcfail:
                 continue
 
-            # edits = False
             clips = False
-            all_matches = True
-            if aligned_read.has_tag("MD"):
-                all_matches = aligned_read.get_tag('MD') == str(len(aligned_read.query_sequence))
+            # all_matches = True
+            # if aligned_read.has_tag("MD"):
+            #     all_matches = aligned_read.get_tag('MD') == str(len(aligned_read.query_sequence))
             # elif aligned_read.has_tag("nM"):
             #     all_matches = aligned_read.get_tag("nM") == 0
             # elif aligned_read.has_tag('NM'):
             #     all_matches = aligned_read.get_tag("NM") < 2
             #     edits = aligned_read.get_tag("NM") >= 2
 
-            perfect_align = True if (len(aligned_read.cigartuples) == 1) and (all_matches) and (aligned_read.flag in [83, 163, 99, 147]) else False
+            perfect_align = True if utils.skip_read(aligned_read, self.params.get_param("insertsize_thresh")) else False
             if perfect_align:
-                ref_kmer = aligned_read.query_sequence[0:self.kmer_len]
-                if ref_kmer not in ref_khash:
-                    ref_khash[ref_kmer] = 0
-                ref_khash[ref_kmer] += 1
+                ref_kmer = aligned_read.query_sequence[0:kmer_size]
+                if ref_kmer not in self.ref_khash:
+                    self.ref_khash[ref_kmer] = 0
+                self.ref_khash[ref_kmer] += 1
                 # for kmer in utils.sliding_window(aligned_read.query_sequence, kmer_size):
                 #     if kmer not in ref_khash:
                 #         ref_khash[kmer] = 0
@@ -863,43 +946,111 @@ class TargetManager(object):
             elif aligned_read.mapq == 0:
                 continue
 
+            '''
+        align_pos_index = read.reference_start
+        align_positions = [align_pos_index]
+        if read.cigartuples is not None:
+            for index, cigar in enumerate(read.cigartuples):
+                if index == 0:
+                    # Check if first cigar is a softclip, if so adjust read start and 
+                    if cigar[0] == 4:
+                        align_pos_index = align_pos_index - cigar[1]
+                        align_positions[0] = align_pos_index
+                        regions += self.get_regions(align_pos_index, kmer_size)
+                    else:
+                        regions += self.get_regions(align_pos_index, kmer_size)
+                if cigar[0] == 0:  # Match
+                    align_pos_index += cigar[1]
+                elif cigar[0] == 3:  # Gap
+                    align_pos_index += cigar[1]
+                    regions += self.get_regions(align_pos_index, kmer_size)
+                    align_positions.append(align_pos_index)
+            '''
+
             # clip_indices = []
-            sr_read = False
             read_kmers = set()
+            alignment_pos = aligned_read.reference_start
             if aligned_read.cigartuples is not None:
                 for index, cigar in enumerate(aligned_read.cigartuples):
-                    if cigar[0] == 4:
-                        # clip_indices.append((index, cigar[1]))
-                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1]
-                        eindex = cigar[1] + 1 if index == 0 else len(aligned_read.query_sequence)
-                        seq = aligned_read.query_sequence[sindex:eindex]
-                        qual = aligned_read.query_qualities[sindex:eindex]
+                    if cigar[0] in [0, 3, 2]:
+                        alignment_pos += cigar[1]
+                        continue
+                    elif cigar[0] != 4:
+                        continue
+                    # clip_indices.append((index, cigar[1]))
+                    sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1]
+                    eindex = cigar[1] if index == 0 else len(aligned_read.query_sequence)
+                    seq = aligned_read.query_sequence[sindex:eindex]
+                    qual = aligned_read.query_qualities[sindex:eindex]
 
-                        if max(qual) < 3:
-                            continue
+                    if max(qual) < 3:
+                        continue
 
-                        sindex = index if index == 0 else len(aligned_read.query_sequence) - cigar[1] - self.kmer_len
-                        eindex = cigar[1] + 1 + self.kmer_len if index == 0 else len(aligned_read.query_sequence)
-                        seq = aligned_read.query_sequence[sindex:eindex]
-                        # print 'Clipped seq', seq
-                        for kmer in utils.get_kmer_set(str(seq), self.kmer_len):
-                            # if kmer == 'GCTACAGGAGTGGGG':
-                            #     print '\t', kmer, kmer in ref_khash, sv_khash.get(kmer)
-                            if kmer not in ref_khash:
-                                if kmer not in self.sv_khash:
-                                    self.sv_khash[kmer] = 0
-                                self.sv_khash[kmer] += 1
-                                read_kmers.add(kmer)
-                                # print kmer, sv_khash[kmer]
-                            elif kmer in self.sv_khash:
-                                # print 'Remove kmer', kmer
-                                del self.sv_khash[kmer]
-                        # clips = True
-                        sr_read = True
-                    # elif cigar[0] in [1,2]:
-                    #     sr_read = True
+                    '''
+                    Typical clipped sequence at the beginning of a read - trim the first N bases with low qual - keep new start index
+                    seq  ACTGCGTGCGTGC 
+                    qual 2222222225566
 
+
+                    '''
+                    idx = 0
+                    if index == 0:
+                        while qual[idx] < 3 and idx < (len(qual) - 1):
+                            idx += 1
+                            sindex += 1
+                    else:
+                        while qual[::-1][idx] < 3 and idx < (len(qual) - 1):
+                            # print idx, qual[::-1][idx]
+                            idx += 1
+                            eindex -= 1
+
+                    # print '1. Clip sequence indices', sindex, eindex, '\n'
+
+                    if alignment_pos not in clip_pos:
+                        clip_pos[alignment_pos] = {}
+                    clip_dir = '-' if (not aligned_read.is_reverse and index == 0) or (aligned_read.is_reverse and index == 0) else '+'
+                    if clip_dir not in clip_pos[alignment_pos]:
+                        clip_pos[alignment_pos][clip_dir] = []
+                    clip_type = 'e' if (not aligned_read.is_reverse and index == 0) or (aligned_read.is_reverse and index > 0) else 'i'
+                    clip_pos[alignment_pos][clip_dir].append((clip_type, aligned_read.query_name))
+
+                    # print '2. Clip qual, post', cigar, seq, len(seq), qual, sr_read, '\n'
+                    sindex = sindex if index == 0 else max(0, sindex - kmer_size)
+                    eindex = min(len(aligned_read.query_sequence), eindex + 1 + kmer_size) if index == 0 else eindex
+                    seq = aligned_read.query_sequence[sindex:eindex]
+                    qual = aligned_read.query_qualities[sindex:eindex]
+
+                    # print '3. Clipped seq', sindex, eindex, seq, len(seq)
+                    # xx = utils.reverse_complement('AGGAGAGTAATGGGAGTTCTGCAACACATAAG')
+                    # if aligned_read.seq.find("AGGAGAGTAATGGGAGTTCTGCAACACATAAG") > -1 or aligned_read.seq.find(xx) > -1:
+                    #     print 'FOUND READ BLAH', max(qual), seq, sindex, eindex, seq.find('AGGAGAGTAATGGGAGTTCTGCAACACATAAG'), seq.find(xx)
+                    #     print aligned_read
+
+                    for kmer in utils.get_kmer_set(str(seq), kmer_size):
+                        # print 'SR Read kmer', kmer
+                        # if kmer == 'TGCTAGTGGGAATGTAAAATGGTGCAGCCACT' or utils.reverse_complement('TGCTAGTGGGAATGTAAAATGGTGCAGCCACT') == kmer:
+                        #      print '\tFOUND', kmer, kmer in self.ref_khash, self.sv_khash.get(kmer)
+                        #      print aligned_read
+                        #      sys.exit()
+                        if kmer not in self.ref_khash:
+                            if kmer not in self.sv_khash:
+                                self.sv_khash[kmer] = 0
+                            self.sv_khash[kmer] += 1
+                            read_kmers.add(kmer)
+                            # print kmer, sv_khash[kmer]
+                        elif kmer in self.sv_khash:
+                            # print 'Remove kmer', kmer
+                            del self.sv_khash[kmer]
+                    # clips = True
+
+                    # print '4. Read added', aligned_read, seq
+                    sr_read = True
+                # elif cigar[0] in [1,2]:
+                #     sr_read = True
+
+            # print 'Checking if aligned read is soft clipped', aligned_read.query_name, sr_read
             if sr_read:
+                # print 'Adding read', sr_read, aligned_read
                 if self.normal_hash is not None:
                     if aligned_read.reference_start > self.normal_hash.end:
                         self.hash_normal_reads()
@@ -912,33 +1063,36 @@ class TargetManager(object):
 
                 self.sv_reads.append(aligned_read)
                 if not self.assembly_batches[-1].check_read(aligned_read):
-                    print 'Closing assembly batch', batch_index
+                    # print 'Closing assembly batch', batch_index
                     batch_index += 1
                     self.assembly_batches.append(AssemblyBatch(self.name, batch_index, bamfile, self.paths['data']))
                     self.assembly_batches[-1].add_read(aligned_read)
-                # sv_bam.write(aligned_read)
-
-                # sv_kmers = 0
-                # for kmer in utils.sliding_window(aligned_read.query_sequence, kmer_size):
-                #     if kmer not in ref_khash:
-                #         if kmer not in sv_khash:
-                #             sv_khash[kmer] = 0
-                #         sv_khash[kmer] += 1
-                #         sv_kmers += 1
-
-                # if sv_kmers > 1:
                 sv_fq.write("@" + aligned_read.qname + "\n" + aligned_read.seq + "\n+\n" + aligned_read.qual + "\n")
-                # sv_fq.write(">" + aligned_read.qname + "\n" + aligned_read.seq + "\n")
-                # print 'Added read', aligned_read
 
+            dr_read = False
             if aligned_read.flag not in [83, 163, 99, 147]:
+                dr_read = True
                 self.dr_clusters.check_read(aligned_read)
             elif utils.check_outties(aligned_read):
+                dr_read = True
                 self.dr_clusters.check_read(aligned_read, True)
+            elif abs(aligned_read.template_length) > self.params.get_param("insertsize_thresh"):
+                dr_read = True
+                # print 'INSERT SIZE READ', aligned_read.query_name, aligned_read.template_length, aligned_read.reference_start
+                self.dr_clusters.check_read(aligned_read)
 
+            # if dr_read:
+            #     try:
+            #         mate = bamfile.mate(aligned_read)
+            #         print 'Getting mate read', aligned_read, mate
+            #     except ValueError:
+            #         continue
+        # for c in clip_pos:
+        #     for cc in clip_pos[c]:
+        #         print c, cc, clip_pos[c][cc]
         # Close out dr_clusters
         self.assembly_batches[-1].close_batch()
-        self.close_dr_clusters()
+        self.close_dr_clusters(clip_pos)
 
         # for dr_flag in self.dr_clusters.clusters.keys():
         #     for chrom in self.dr_clusters.clusters[dr_flag].keys():
@@ -946,6 +1100,10 @@ class TargetManager(object):
         #             print dr_flag, chrom, rc.dr, rc.start, rc.end
 
         sv_fq.close()
+
+        # if 'TGCTAGTGGGAATGTAAAATGGTGCAGCCACT' in self.sv_khash:
+        #     print 'BLAHB LADADFADF'
+        #     sys.exit()
         # print len(sv_khash)
         # print sv_khash
         # sys.exit()
@@ -1117,10 +1275,10 @@ class TargetManager(object):
             if len(ab.reads) > 1:
                 contig_fn = os.path.join(self.paths['contigs'], "%s_contigs.%d.fastq" % (self.name, ab.index))
                 ab.contig_fn = contig_fn
-                utils.run_fermi(self.params.get_param('fermi'), ab.fq, contig_fn)
-                self.parse_fermi_out(contig_fn)
+                utils.run_fermi(self.params.get_param('fml-asm'), ab.fq, contig_fn)
+                self.parse_fermi_out(ab.index, contig_fn)
 
-    def parse_fermi_out(self, contig_fn):
+    def parse_fermi_out(self, batch_idx, contig_fn):
         '''
         '''
 
@@ -1128,11 +1286,11 @@ class TargetManager(object):
         for header,seq,qual in utils.FastqFile(contig_fn):
             contig_values = header.split()
             nreads = int(contig_values[1])
-            contig_id = contig_values[0].lstrip('@').split(':')[0]
-            contig_seq = seq
-            contig = Contig(self.paths['contigs'], self.name + '_contig-' + contig_id, seq, nreads, self.sv_khash, self.kmer_len)
-            print contig.seq, contig.valid()
+            contig_id = str(batch_idx) + "_" + contig_values[0].lstrip('@').split(':')[0]
+            # contig_seq = seq
+            contig = Contig(self.paths['contigs'], self.name + '_contig-' + contig_id, seq, nreads, self.sv_khash, self.ref_khash, self.params.get_param('kmer_size'))
             if contig.valid():
+                # print contig.seq, contig.valid()
                 self.contigs.append(contig)
 
     def compare_kmers(self):
@@ -1353,7 +1511,6 @@ class TargetManager(object):
     #     return proper_map, overlap_reads
 
     def check_overlap(self, dir, mseq, sc_seq):
-
         '''
         '''
 
@@ -1363,7 +1520,6 @@ class TargetManager(object):
 
 
     def check_pair_overlap(self, mate_seq, read, coords, trim_dir):
-
         '''
         '''
 
@@ -1422,7 +1578,6 @@ class TargetManager(object):
     #         result_files[f].close()
 
     def write_results(self):
-
         '''
         '''
 
@@ -1439,7 +1594,6 @@ class TargetManager(object):
         result_file.close()
 
     def get_sv_counts(self):
-
         '''
         '''
 
@@ -1463,7 +1617,6 @@ class TargetManager(object):
         return total
 
     def get_summary(self):
-
         '''
         '''
 
@@ -1483,7 +1636,6 @@ class TargetManager(object):
         return "\t".join(header), str_out
 
     def rm_output_dir(self):
-
         '''
         '''
 

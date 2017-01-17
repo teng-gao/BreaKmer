@@ -87,6 +87,8 @@ class ParamManager(object):
             self.paths['ref_data'] = os.path.abspath(os.path.normpath(self.opts['reference_data_dir']))  # Path to target reference sequence fast files.
         if 'reference_fasta' in self.opts:
             self.set_param('reference_fasta_dir', os.path.split(self.opts['reference_fasta'])[0])  # Path to genome fasta file.
+            ref_fasta_name, file_ext = os.path.splitext(self.opts['reference_fasta'])
+            self.set_param('reference_fasta_2bit', os.path.join(self.get_param('reference_fasta_dir'), ref_fasta_name + ".2bit"))
 
         # Setup directories
         self.paths['analysis'] = os.path.abspath(os.path.normpath(self.opts['analysis_dir']))
@@ -196,7 +198,8 @@ class ParamManager(object):
                     'gfclient',
                     'fatotwobit',
                     'cutadapt',
-                    'jellyfish')
+                    'jellyfish',
+                    'fml-asm')
 
         for binary_name in binaries:
             binary_path = self.get_param(binary_name)
@@ -354,16 +357,16 @@ class ParamManager(object):
 
     def set_param(self, key, value):
         """Set the parameter value in the self.opts dict.
-        Args:
-            key (str):              Dictionary key
-            value (int/str/boolean):  Value to store
-        Returns:
-            None
-        Raises:
-            None
+            Args:
+                key (str):              Dictionary key
+                value (int/str/boolean):  Value to store
+            Returns:
+                None
+            Raises:
+                None
         """
 
-        self.opts[key] = value
+        self.opts[key] = value if not utils.is_number(value) else int(value)
 
 
 class Anno(object):

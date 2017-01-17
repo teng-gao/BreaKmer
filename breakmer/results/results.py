@@ -108,6 +108,7 @@ class Breakpointer(object):
         self.rep_filter_brkpts.append(filt_rep_start)
         # Breakpoint locations in reference genome with chrom, strand and in-target indicator (1 = yes)
         self.reference_brkpts_full.append((target_key, blat_res.get_name('hit'), ref_brkpt_list[0], blat_res.strand))
+        # print 'BREAKPOINT FULL', self.reference_brkpts_full
         # brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
 
 class SVResult(object):
@@ -177,8 +178,22 @@ class SVResult(object):
         self.values['target_breakpoints'] = realigned_segment.get_brkpt_str(True)
         self.values['align_cigar'] = realigned_segment.cigar
         self.values['sv_type'] = 'indel'
+        self.values['breakpoint_coverages'] = self.get_brkpt_coverages(realigned_segment.reference_brkpts_full)
         self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x, True)) for x in realigned_segment.query_brkpts])
-        self.values['breakpoint_coverages'] = self.get_brkpt_coverages()
+        self.values['allele_fractions'] = self.get_allele_fraction(self.values['split_read_count'], 0, self.values['breakpoint_coverages'])
+
+    def get_allele_fraction(self, sr_counts, dr_counts, depth):
+        '''
+        '''
+
+        max_sr_count = 0
+        for sr_count_realign in sr_counts.split(";"):
+            max_sr_count = max(max_sr_count, max([int(y) for y in sr_count_realign.split(',')]))
+        max_depth = max([int(x) for x in depth.split(",")])
+        sr_af = float(max_sr_count) / float(max(max_depth, 1))
+        dr_af = float(dr_counts) / float(max(max_depth, 1))
+        af = float(max_sr_count + dr_counts) / float(max(max_depth, 1))
+        return ",".join([str(x) for x in [sr_af, dr_af, af]])
 
     def set_rearrangement_values(self):
         '''
@@ -197,7 +212,8 @@ class SVResult(object):
                       'repeat_matching': [],
                       'anno_genes': [],
                       'disc_read_count': 0,
-                      'total_matching': []
+                      'total_matching': [],
+                      'allele_fractions': 0
                      }
 
         valid_rearrangement = [True, True]
@@ -221,6 +237,7 @@ class SVResult(object):
         # One chrom rearrangement
         # print set(breakpointer.chroms)
         if len(set(breakpointer.chroms)) == 1:
+            self.values['breakpoint_coverages'] = self.get_brkpt_coverages(breakpointer.reference_brkpts_full)
             brkpt_counts, brkpt_rep_filter = self.get_brkpt_counts_filt(breakpointer)
 
             self.breakpoint_values = {'counts': brkpt_counts, 
@@ -232,11 +249,11 @@ class SVResult(object):
             res_values['sv_type'] = sv_type
             res_values['sv_subtype'] = sv_subtype
             res_values['disc_read_count'] = disc_read_support
-            res_values['anno_genes'] = list(set(res_values['anno_genes']))
+            res_values['anno_genes'] = res_values['anno_genes']
             res_values['target_breakpoints'] = breakpointer.output_str
-            res_values['split_read_count'] = brkpt_counts['exact_cov']
                 # result = self.format_result(res_values)
         else:
+            self.values['breakpoint_coverages'] = self.get_brkpt_coverages(breakpointer.reference_brkpts_full)
             brkpt_counts, brkpt_rep_filter = self.get_brkpt_counts_filt(breakpointer)
             self.breakpoint_values = {'counts': brkpt_counts, 
                                       'rep_filter': brkpt_rep_filter, 
@@ -245,12 +262,15 @@ class SVResult(object):
             res_values['sv_type'] = ['rearrangement']
             res_values['sv_subtype'] = ['trl']
             res_values['target_breakpoints'] = breakpointer.output_str
-            res_values['split_read_count'] = brkpt_counts['exact_cov']
 
         for key in res_values.keys():
             if key in self.values:
                 self.values[key] = res_values[key]
-        self.values['breakpoint_coverages'] = self.get_brkpt_coverages()
+
+        # self.values['breakpoint_coverages'] = self.get_brkpt_coverages(breakpointer.reference_brkpts_full)
+        # print 'Setting split read counts, set rearrangement values', [str(self.contig.get_brkpt_coverage(x[0], True)) for x in breakpointer.queue[1]], breakpointer.queue
+        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x[0], True)) for x in breakpointer.queue[1]])
+        self.values['allele_fractions'] = self.get_allele_fraction(self.values['split_read_count'], res_values['disc_read_count'], self.values['breakpoint_coverages'])
         self.valid_rearrangement = valid_rearrangement
 
     # def get_brkpt_info(self, br, brkpt_d, i, last_iter):
@@ -301,47 +321,91 @@ class SVResult(object):
     #     brkpt_d['formatted'].append(str(br.get_name('hit')) + ":" + "-".join([str(x) for x in tbrkpt]))
     #     return brkpt_d
 
-    def get_brkpt_coverages(self):
+    def get_brkpt_coverages(self, reference_brkpts_full):
         '''
         '''
 
-        brkpts = []
-        tbp = self.values['target_breakpoints']
-        if not isinstance(tbp, list):
-            if tbp.find("(") > -1:
-                tbp = [self.values['target_breakpoints'].split()[0]]
-        # tbp = tbp.split(',')
-        for bp in tbp:
-            chrom, locs = bp.split(':')
-            chrom = chrom.replace('chr', '')
-            ll = locs.split('-')
-            if len(ll) > 1: 
-                brkpts.append((chrom, int(ll[0]), int(ll[0])+1))
-                brkpts.append((chrom, int(ll[1]), int(ll[1])+1))
-            else:
-                brkpts.append((chrom, int(ll[0]), int(ll[0])+1))
+        # brkpts = []
+        # tbp = self.values['target_breakpoints']
+        # if not isinstance(tbp, list):
+        #     if tbp.find("(") > -1:
+        #         tbp = [self.values['target_breakpoints'].split()[0]]
+
+        # for bp in tbp:
+        #     chrom, locs = bp.split(':')
+        #     chrom = chrom.replace('chr', '')
+        #     ll = locs.split('-')
+        #     if len(ll) > 1: 
+        #         brkpts.append((chrom, int(ll[0])-20, int(ll[0])+20))
+        #         brkpts.append((chrom, int(ll[1])-20, int(ll[1])+20))
+        #     else:
+        #         brkpts.append((chrom, int(ll[0]), int(ll[0])+1))
           
-        bamfile = pysam.Samfile(self.sample_bam,'rb')
+        bamfile = pysam.AlignmentFile(self.sample_bam,'rb')
 
-        covs = [0]*len(brkpts)
-        bp_index = 0
-        for bp in brkpts:
-            cov = 0
-            c,s,e = bp
+        # print 'Breakpoints', self.values['target_breakpoints'], reference_brkpts_full
+        coverages = [0]*len(reference_brkpts_full)
+        for i, ref_brkpt in enumerate(reference_brkpts_full):
+            # coverage = 0
+            in_target, chrom, bp, strand = ref_brkpt
+            print i, ref_brkpt
             try:
-                areads = bamfile.fetch(str(c), s, e)
+                reads = bamfile.fetch(str(chrom), bp - 20, bp + 20)
             except:
-                # print 'Passing on brkpt', c, s, e
                 continue
 
-
-            for aread in areads:
-                if aread.is_duplicate or aread.is_qcfail or aread.is_unmapped or aread.mapq < 10: 
+            # added_splitreads = 0
+            for read in reads:
+                if read.is_duplicate or read.is_qcfail or read.is_unmapped or read.mapq < 10: 
                     continue
-                cov += 1
-            covs[bp_index] = cov
-            bp_index += 1
-        return ",".join([str(x) for x in covs])
+                if in_target == 0:
+                    # Check if any reads are split and contain kmers in contig
+                    self.check_sr_read(read)
+                coverages[i] += 1
+            # coverages[i] = coverage
+            # self.values['split_read_count'] += ";" + str(added_splitreads)
+
+        # bp_index = 0
+        # for bp in brkpts:
+        #     cov = 0
+        #     c,s,e = bp
+        #     try:
+        #         areads = bamfile.fetch(str(c), s, e)
+        #     except:
+        #         continue
+
+        #     for aread in areads:
+        #         if aread.is_duplicate or aread.is_qcfail or aread.is_unmapped or aread.mapq < 10: 
+        #             continue
+
+        #         cov += 1
+        #     covs[bp_index] = cov
+        #     bp_index += 1
+        # print coverages
+        return ",".join([str(x) for x in coverages])
+
+    def check_sr_read(self, read):
+        '''
+        '''
+        # added_splitreads = 0
+        if read.cigartuples is not None:
+            for index, cigar in enumerate(read.cigartuples):
+                if cigar[0] == 4:
+                    sindex = index if index == 0 else len(read.query_sequence) - cigar[1]
+                    eindex = cigar[1] + 1 if index == 0 else len(read.query_sequence)
+                    seq = read.query_sequence[sindex:eindex]
+                    qual = read.query_qualities[sindex:eindex]
+                    if max(qual) < 3:
+                        continue
+                    for kmer in utils.get_kmer_set(str(seq), self.params.get_param('kmer_size')):
+                        if kmer in self.contig.kmers:
+                            self.contig.kmers[kmer] += 1
+                            # print 'Adding kmer', kmer, self.contig.kmers[kmer]
+                        elif utils.reverse_complement(kmer) in self.contig.kmers:
+                            self.contig.kmers[utils.reverse_complement(kmer)] += 1
+                            # print 'Adding kmer', utils.reverse_complement(kmer), self.contig.kmers[utils.reverse_complement(kmer)]
+                            # added_splitreads += 1
+        # return added_splitreads
 
     def multiple_genes(self, chrs, brkpts, anno_genes):
         '''
@@ -375,7 +439,7 @@ class SVResult(object):
 
         rearr_values = {'disc_read_count': None, 
                         'sv_type': 'rearrangement', 
-                        'sv_subtype': None, 
+                        'sv_subtype': [None], 
                         'pattern_matched': False}
 
         # The adjacent realignment segments must not overlap for an inversion or tandem dup event.
@@ -408,7 +472,7 @@ class SVResult(object):
                 # bp_buffer = 20
                 # if tgap < 0:
                 utils.log(self.logging_name, 'debug', 'Tandem duplication event identified.')
-                rearr_values['hit'] = True
+                rearr_values['pattern_matched'] = True
                 rearr_values['sv_subtype'] = 'tandem_dup'
                 rearr_values['disc_read_count'] = disc_reads.check_clusters_td(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
                     # for read_pair in disc_reads['td']:
@@ -428,6 +492,9 @@ class SVResult(object):
                 #     rearr_values['hit'] = True
                 #     rearr_values['sv_type'] = 'indel'
                 #     rearr_values['indelSize'] = 'I' + str(qgap)
+            # else:
+            #     print 'No inversion, no tandem dup'
+        # print 'Rearrangement values', rearr_values
         return rearr_values
 
     def define_rearr(self, chrom, disc_reads, breakpointer, strands):
@@ -435,7 +502,7 @@ class SVResult(object):
         '''
 
         sv_type = 'rearrangement'
-        sv_subtype = None
+        sv_subtype = [None]
         rs = 0
         hit = False
 
@@ -481,46 +548,52 @@ class SVResult(object):
                     rearr_hits[vals['sv_type']] = []
                 rearr_hits[vals['sv_type']].append(vals)
 
+        print 'Rearrangement hits', rearr_hits
+        # print rearr_hits
         if 'rearrangement' not in rearr_hits:
             utils.log(self.logging_name, 'debug', 'Error in realignment parsing. Indel found without rearrangement event.')
 
         rearr_hit = False
         for rearr in rearr_hits:
             for i, rr in enumerate(rearr_hits[rearr]):
+                print 'Rearr options', i, rr
                 if rearr == 'rearrangement':
                     if not rearr_hit:
-                        sv_subtype = rearr_hits[rearr][i]['sv_subtype']
-                        rs = int(rearr_hits[rearr][i]['disc_read_count'])
+                        sv_subtype = rr['sv_subtype']
+                        rs = int(rr['disc_read_count'])
                         rearr_hit = True
                     else:
+                        print 'Setting subtype to None'
                         sv_subtype = None
                         if self.rearr_desc is None:
                             self.rearr_desc = [sv_subtype]
-                        self.rearr_desc.append(rearr_hits[rearr][i]['sv_subtype'])
+                        self.rearr_desc.append(rr['sv_subtype'])
+                        print 'Descriptions', self.rearr_desc
                 else:
                     if self.rearr_desc is None:
                         self.rearr_desc = []
-                    self.rearr_desc.append(rearr_hits[rearr][i]['indelSize'])
+                    self.rearr_desc.append(rr['indelSize'])
 
-        if sv_subtype is None:
-            ndiscordant_reads = 0
-            utils.log(self.logging_name, 'debug', 'Not inversion or tandem dup, checking for odd read pairs around breakpoints')
-            ref_brkpt_discreads = [0] * len(breakpointer.reference_brkpts_full)
-            for i, ref_brkpt_values in enumerate(breakpointer.reference_brkpts_full): 
-                # b = brkpts[i]
-                target_key, chrom, pos, strand = ref_brkpt_values
-                if chrom in disc_reads.clusters:
-                    for dr_flag in disc_reads.clusters:
-                        if (strand == '+' and dr_flag < 16) or (strand == '-' and dr_flag >= 16):
-                            for read_cluster in disc_reads.clusters[dr_flag]:
-                                if abs(pos - read_cluster.last_pos) <= self.params.get_param('insertsize_thresh'):
-                                    ndiscordant_reads += read_cluster.dr
-                for read_pair in disc_reads['other']:
-                    r1p, r2p, r1s, r2s, qname = read_pair
-                    if abs(r1p - b) <= 300 or abs(r2p-b) <= 300:
-                        utils.log(self.logging_name, 'debug', 'Adding read support from read %s, with strands %d, %d and positions %d, %d for breakpoint at %d' % (qname, r1s, r2s, r1p, r2p, b))
-                        ref_brkpt_discreads[i] += 1
-            rs = max(rs)
+        # Need to resolve
+        # if sv_subtype is None:
+        #     ndiscordant_reads = 0
+        #     utils.log(self.logging_name, 'debug', 'Not inversion or tandem dup, checking for odd read pairs around breakpoints')
+        #     ref_brkpt_discreads = [0] * len(breakpointer.reference_brkpts_full)
+        #     for i, ref_brkpt_values in enumerate(breakpointer.reference_brkpts_full): 
+        #         # b = brkpts[i]
+        #         target_key, chrom, pos, strand = ref_brkpt_values
+        #         if chrom in disc_reads.clusters:
+        #             for dr_flag in disc_reads.clusters:
+        #                 if (strand == '+' and dr_flag < 16) or (strand == '-' and dr_flag >= 16):
+        #                     for read_cluster in disc_reads.clusters[dr_flag]:
+        #                         if abs(pos - read_cluster.last_pos) <= self.params.get_param('insertsize_thresh'):
+        #                             ndiscordant_reads += read_cluster.dr
+        #         for read_pair in disc_reads['other']:
+        #             r1p, r2p, r1s, r2s, qname = read_pair
+        #             if abs(r1p - b) <= 300 or abs(r2p-b) <= 300:
+        #                 utils.log(self.logging_name, 'debug', 'Adding read support from read %s, with strands %d, %d and positions %d, %d for breakpoint at %d' % (qname, r1s, r2s, r1p, r2p, b))
+        #                 ref_brkpt_discreads[i] += 1
+        #     rs = max(rs)
 
         return sv_type, sv_subtype, rs
 
@@ -588,7 +661,7 @@ class SVResult(object):
         brkpt_count_dict = {'min_cov_5left_5right': [],
                             'min_cov_1left_1right': [], 
                             'exact_cov':[]
-                       }
+                           }
         # brkpt_kmers = []
         for query_brkpt in breakpointer.queue[1]:
             # print 'Query breakpoint', query_brkpt
@@ -605,14 +678,14 @@ class SVResult(object):
             brkpt_rep_filt = brkpt_rep_filt or (comp_vec[query_brkpt[0]] < (avg_comp/2))
             utils.log(self.logging_name, 'debug', 'Read count around breakpoint %d: %s' % (query_brkpt[0], ",".join([str(x) for x in brkpt_count_dict['min_cov_5left_5right']])))
         # utils.log(self.logging_name, 'debug', 'Kmer count around breakpoints %s'%(",".join([str(x) for x in brkpt_kmers])))
-        brkpt_rep_filt = brkpt_rep_filt or (len(filter(lambda x: x, breakpointer.rep_filter_brkpts)) > 0)
+        brkpt_rep_filt = brkpt_rep_filt or (len(filter(lambda x: x, breakpointer.rep_filter_brkpts)) > 1)
         return brkpt_count_dict, brkpt_rep_filt
 
     def get_output_string(self):
 
         '''
         '''
-        output_list_keys = ['anno_genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']
+        output_list_keys = ['anno_genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_coverages', 'allele_fractions', 'contig_id', 'contig_seq']
         output_list = []
         for key in output_list_keys:
             if not isinstance(self.values[key], list):

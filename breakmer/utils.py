@@ -29,7 +29,7 @@ __license__ = "MIT"
 def reverse_complement(seq):
     '''
     '''
-    return Seq.Seq(seq).reverse_complement()
+    return str(Seq.Seq(seq).reverse_complement())
 
 def check_read_mismapping(read):
     '''
@@ -376,8 +376,8 @@ def start_blat_server(params):
     ref_fasta_name, file_ext = os.path.splitext(reference_fasta_filename)
 
     # Check if 2bit file exists - if not then create it.
-    params.set_param('blat_2bit', os.path.join(params.get_param('reference_fasta_dir'), ref_fasta_name + ".2bit"))
-    if not os.path.exists(params.get_param('blat_2bit')):  # Create 2bit file to use for running the blat server.
+    # params.set_param('reference_fasta_2bit', os.path.join(params.get_param('reference_fasta_dir'), ref_fasta_name + ".2bit"))
+    if not os.path.exists(params.get_param('reference_fasta_2bit')):  # Create 2bit file to use for running the blat server.
         log(logging_name, 'info', 'Creating 2bit from %s reference fasta' % params.get_param('reference_fasta'))
         curdir = os.getcwd()
         os.chdir(params.get_param('reference_fasta_dir'))
@@ -704,7 +704,6 @@ def seq_trim(qual_str, min_qual):
     return counter
 
 def get_clip_coords(read_quals, read_cigar):
-
     '''
     '''
 
@@ -722,9 +721,11 @@ def get_clip_coords(read_quals, read_cigar):
     return clip_coords
 
 def is_number(value):
+    '''
+    '''
 
-    '''
-    '''
+    if value is None:
+        return False
 
     try:
         float(value)
@@ -742,7 +743,6 @@ def is_number(value):
 
 
 def test_cutadapt(fq_fn, cutadapt_binary, cutadapt_config):
-
     '''
     '''
 
@@ -982,13 +982,23 @@ def run_fermi(fermi, fq_in, result_fn):
     '''
     '''
     logging_name = 'breakmer.utils'
-    fermi_cmd = '%s %s > %s' % (fermi, fq_in, result_fn)
+    fermi_cmd = '%s -c 2,2 %s > %s' % (fermi, fq_in, result_fn)
     fermi_process = subprocess.Popen(fermi_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     output, errors = fermi_process.communicate()
+    log(logging_name, 'info', 'Running fermi assembler: %s' % fermi_cmd)
     log(logging_name, 'info', 'Fermi output %s' % output)
     if errors != '':
         log(logging_name, 'info', 'Fermi errors %s' % errors)
     return
+
+def skip_read(aligned_read, insertsize_thresh):
+    '''
+    '''
+
+    no_cigar = len(aligned_read.cigartuples) == 1
+    flag_ok = aligned_read.flag in [83, 163, 99, 147]
+    insertsize_ok = abs(aligned_read.template_length) < insertsize_thresh
+    return no_cigar and flag_ok and insertsize_ok
 
 def run_blat(realign_value_dict, result_fn, query_fn, scope):
 
@@ -1000,10 +1010,12 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
         realign_cmd = None
         if scope == 'genome':
             log(logging_name, 'info', 'Running blat %s, storing results in %s' % (realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -nohead -minScore=23 localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+            # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
         else:
             log(logging_name, 'info', 'Running blat %s, storing results in %s'%(realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=10 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=10 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=1 -minMatch=1 -repeats=lower -noHead %s %s %s'%(self.params.opts['blat'], db, self.contig_fa_fn, self.query_res_fn)
 
         log(logging_name, 'info', 'Blat system command %s' % realign_cmd)
@@ -1302,7 +1314,7 @@ def get_kmer_set(seq, ksize):
     '''
     '''
 
-    return set(seq[i:i + ksize] for i in range(len(seq) - ksize+1))
+    return set([seq[i:i + ksize] for i in range(len(seq) - ksize+1)])
 
 def get_read_kmers(seq,l,skmers):
   kmers = []
