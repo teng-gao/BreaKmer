@@ -450,7 +450,7 @@ class AssemblyBatch(object):
         elif abs(self.last_pos - read.reference_start) > len(read.query_sequence): # and self.nreads > 10000:
             # Reject read and make it go into a new batch
             # Close the files.
-            print 'Closing batch'
+            # print 'Closing batch'
             self.close_batch()
             return False
         else:
@@ -460,6 +460,7 @@ class AssemblyBatch(object):
     def close_batch(self):
         '''
         '''
+        # print 'Close batch'
         if self.nreads > 1:
             # Write files
             fq_f = open(self.fq, 'w')
@@ -467,13 +468,15 @@ class AssemblyBatch(object):
             for read in self.reads:
                 fq_f.write("@" + read.qname + "\n" + read.seq + "\n+\n" + read.qual + "\n")
                 self.bam.write(read)
+            # print 'Closing fq', self.fq
             fq_f.close()
             self.bam.close()
     #     utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
             pysam.sort(self.bam.filename, self.bam_sorted.replace('.bam', ''))
     #     utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
             pysam.index(self.bam_sorted)
-
+        else:
+            self.bam.close()
     # def print_values(self):
     #     '''
     #     '''
@@ -552,8 +555,14 @@ class Contig(object):
         # for kmer in self.kmers:
         #     print kmer, self.sv_khash[kmer]
         self.contig_fa_fn = os.path.join(self.file_path, self.contig_id + ".fa")
+
+        half2_idx = ((len(self.seq)/2) - 20)
+        seq_half1 = self.seq[0:((len(self.seq)/2) + 20)]
+        seq_half2 = self.seq[((len(self.seq)/2) - 20): len(self.seq)]
         fa_f = open(self.contig_fa_fn, 'w')
-        fa_f.write(">" + self.contig_id + "\n" + self.seq)
+        fa_f.write(">" + self.contig_id + "\n" + self.seq + "\n")
+        fa_f.write(">" + self.contig_id + ":1_" + str(half2_idx)  + "\n" + seq_half1 + "\n")
+        fa_f.write(">" + self.contig_id + ":2_" + str(half2_idx) + "\n" + seq_half2)
         fa_f.close()
 
     def get_brkpt_coverage(self, contig_pos, store=False):
@@ -1292,6 +1301,7 @@ class TargetManager(object):
             if contig.valid():
                 # print contig.seq, contig.valid()
                 self.contigs.append(contig)
+
 
     def compare_kmers(self):
 

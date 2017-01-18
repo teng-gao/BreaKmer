@@ -394,7 +394,8 @@ def start_blat_server(params):
 
     # Start gfServer, change dir to 2bit file, gfServer start localhost 8000 .2bit
     params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%d.log' % params.get_param('blat_port')))
-    gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
+    # gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
+    gfserver_cmd = '%s -canStop -log=%s start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     start_time = time.time()
@@ -922,9 +923,10 @@ class fq_read:
 
 class FastqFile(object):
   def __init__(self, f):
-    if isinstance(f,str):
-      f = open(f)
-      self._f = f
+    self.fo = f
+    if isinstance(f, str):
+      self.fo = open(f)
+      self._f = self.fo
   def __iter__(self):
     return self
 
@@ -972,7 +974,7 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
     fa_out.close()
 
     cmd = 'touch %s'%get_marker_fn(test_fa_out)
-    p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     output, errors = p.communicate()
     return True
   else:
@@ -1010,11 +1012,13 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
         realign_cmd = None
         if scope == 'genome':
             log(logging_name, 'info', 'Running blat %s, storing results in %s' % (realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -nohead -minScore=23 localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+            # realign_cmd = '%s -t=dna -q=dna -out=psl -nohead -minScore=23 localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
         else:
             log(logging_name, 'info', 'Running blat %s, storing results in %s'%(realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=10 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=1 -minMatch=1 -repeats=lower -noHead %s %s %s'%(self.params.opts['blat'], db, self.contig_fa_fn, self.query_res_fn)
 

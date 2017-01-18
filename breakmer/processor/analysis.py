@@ -7,6 +7,7 @@ BreaKmer processor.analysis module
 
 import os
 import sys
+import subprocess
 import time
 import math
 import multiprocessing
@@ -105,6 +106,8 @@ class RunTracker(object):
         '''
         '''
 
+        # pid = os.getpid()
+
         start_time = time.clock()  # Track the run time.
 
         if self.params.fnc_cmd == 'profile_data':
@@ -128,6 +131,8 @@ class RunTracker(object):
         trgt_lst = self.params.targets.keys()
         trgt_lst.sort()
         for trgt_name in trgt_lst:
+            # procs = subprocess.check_output([ "lsof", "-p", str( pid ) ] )
+            # print 'PID procs', pid, procs
             print 'ANALYZING TARGET', trgt_name, '*'*50
             trgt = self.targets[trgt_name]
             utils.log(self.logging_name, 'info', 'Analyzing %s' % trgt.name)

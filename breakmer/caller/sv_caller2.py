@@ -197,14 +197,14 @@ class FilterManager(object):
         # print 'Top realigned segment match total', top_realigned_segment.get_nmatch_total()
         check2 = top_realigned_segment.get_nmatch_total() < self.params.get_param('rearr_minseg_len')
         # check3 = (in_ff and span_ff)
-        check4 = (sv_result.values['disc_read_count'] < 1)
+        check4 = (max(sv_result.values['disc_read_count']) < 1)
         check3 = (sv_result.values['sv_subtype'] == 'NA')
         filter_result = check1 or check2 or (check3 and check4)
         utils.log(self.logging_name, 'info', 'Check filter for rearrangement')
         # utils.log(self.logging_name, 'info', 'Filter by feature for being in exon (%r) or spanning exon (%r)' % (in_ff, span_ff))
         utils.log(self.logging_name, 'info', 'Split read threshold %d, breakpoint read counts %d' % (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('rearr_minseg_len')))
         utils.log(self.logging_name, 'info', 'Minimum segment length observed (%d) meets threshold (%d)' % (top_realigned_segment.get_nmatch_total(), self.params.get_param('rearr_minseg_len')))
-        utils.log(self.logging_name, 'info', 'Minimum discordant read pairs for rearrangement (%d)' % (sv_result.values['disc_read_count']))
+        utils.log(self.logging_name, 'info', 'Minimum discordant read pairs for rearrangement (%d)' % (max(sv_result.values['disc_read_count'])))
         utils.log(self.logging_name, 'info', 'Returning filter result (%s), check1 (%s), check2 (%s), check3 (%s)' % (filter_result, check1, check2, check3 and check4))
         return filter_result
 
@@ -223,16 +223,16 @@ class FilterManager(object):
 
         # print 'Filter result', filter_result
         if not filter_result:
-            utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d' % (filter_result, sv_result.values['disc_read_count'])) 
-            if sv_result.values['disc_read_count'] < 2:
+            utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d' % (filter_result, max(sv_result.values['disc_read_count']))) 
+            if max(sv_result.values['disc_read_count']) < 2:
                 match_sorted_realignments = sorted(sv_result.sv_event.realignments, key=lambda x: x.get_nmatch_total())
                 top_realigned_segment = match_sorted_realignments[0]
                 if (top_realigned_segment.get_nmatch_total() < self.params.get_param('trl_min_seg_len')) or (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']) < self.params.get_param('trl_sr_thresh')) or sv_result.breakpoint_values['rep_filter']:
-                    utils.log(self.logging_name, 'debug', 'Shortest segment is < %d bp with %d discordant reads. Filtering.' % (self.params.get_param('trl_minseg_len'), sv_result.values['disc_read_count']))
+                    utils.log(self.logging_name, 'debug', 'Shortest segment is < %d bp with %d discordant reads. Filtering.' % (self.params.get_param('trl_minseg_len'), max(sv_result.values['disc_read_count'])))
                     utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('trl_sr_thresh')))
                     # utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
                     filter_result = True
-                elif sv_result.values['disc_read_count'] == 0: 
+                elif max(sv_result.values['disc_read_count']) == 0: 
                     # Check a number of metrics for shortest blat segment
                     br_qs = top_realigned_segment.qstart()
                     br_qe = top_realigned_segment.qend()

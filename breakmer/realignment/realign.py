@@ -53,6 +53,7 @@ class RealignedSegment(object):
         self.score = 0
         self.reference_brkpts_full = []
         self.params = params
+        self.is_full_query = False
         self.parse_result(scope, params, query_region)
         # self.report_blat_hit()
 
@@ -81,9 +82,18 @@ class RealignedSegment(object):
                             'size': int(self.values[14]), 
                             'coords': tcoords
                            }
+
+        split_idx_adjustment_value = 0
+        add_to_size_value = 0
+        if self.values[9].find(':') > -1:
+            add_to_size_value = int(self.values[9].split(':')[1].split('_')[1])
+            if self.values[9].find(':2_') > -1:
+                split_idx_adjustment_value = add_to_size_value
+        else:
+            self.is_full_query = True
         self.vals['query'] = {'name': self.values[9],
-                              'size':int(self.values[10]),
-                              'coords': [int(self.values[11]), int(self.values[12])]
+                              'size':int(self.values[10]) + add_to_size_value,
+                              'coords': [int(self.values[11]) + split_idx_adjustment_value, int(self.values[12]) + split_idx_adjustment_value]
                              }
 
         self.strand = self.values[8]
@@ -394,6 +404,7 @@ class RealignResultSet(object):
         self.has_results = True
         # self.blat_results = []
         self.realignments = []
+        self.number_full_realignments = 0
         # self.clipped_qs = []
         # self.se = None
         self.sv_event = None
@@ -419,10 +430,13 @@ class RealignResultSet(object):
                 # score_frac = float(score_raw)/float(br.get_size('query'))
                 # score = score_raw + score_frac
                 # perc_ident = br.perc_ident
+                if realigned_segment.is_full_query:
+                    self.number_full_realignments += 1
                 self.realignments.append(realigned_segment)
                 # self.blat_results.append((score, ngaps, in_target, br, perc_ident))
                 self.add_summary_metrics(realigned_segment)
-        self.realignments = sorted(self.realignments, key=lambda x: (-x.score, -x.percent_identity, x.ngaps))
+        self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -x.score, -x.percent_identity, x.ngaps))
+
         # self.blat_results = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], -blat_results[4], blat_results[1]) ) 
 
     def add_summary_metrics(self, realigned_segment):
@@ -501,7 +515,10 @@ class RealignResultSet(object):
                 # print 'Spans query', realigned_segment.spans_query()
                 # print 'Length and in target', len(self.realignments), self.realign_result_fn
                 # print 'in target', realigned_segment.in_target
-                if realigned_segment.has_gaps() and (realigned_segment.spans_query() or (len(self.realignments) == 1 and realigned_segment.in_target)):
+                # if realigned_segment.has_gaps() and (realigned_segment.spans_query() or (len(self.realignments) == 1 and realigned_segment.in_target)):
+                # print realigned_segment.values
+                # print self.number_full_realignments, realigned_segment.has_gaps(), realigned_segment.spans_query()
+                if realigned_segment.has_gaps() and (realigned_segment.spans_query() or (self.number_full_realignments == 1 and realigned_segment.in_target)):
                     has_indel = True
                     utils.log(self.logging_name, 'info', 'Contig has indel, returning %r' % has_indel)
                     self.sv_event = results.SVEvent(realigned_segment)
@@ -602,7 +619,7 @@ class RealignResultSet(object):
         merged_clip = [0, None]
 
         for i, realigned_segment in enumerate(self.realignments):
-            utils.log(self.logging_name, 'debug', 'Blat result with start %d, end %d, chrom %s' % (realigned_segment.qstart(), realigned_segment.qend(), realigned_segment.get_name('hit')))
+            utils.log(self.logging_name, 'debug', 'Blat result with start %d, end %d, chrom %s, strand %s' % (realigned_segment.qstart(), realigned_segment.qend(), realigned_segment.get_name('hit'), realigned_segment.strand))
             gaps = self.iter_gaps(gaps, realigned_segment, i)
             if self.sv_event.qlen > merged_clip[0]:
                 merged_clip = [self.sv_event.qlen, self.sv_event]
@@ -617,7 +634,6 @@ class RealignResultSet(object):
         return valid_result
 
     def check_add_br(self, qs, qe, gs, ge, br):
-
         '''
         '''
 
@@ -641,12 +657,10 @@ class RealignResultSet(object):
         return add
 
     def iter_gaps(self, gaps, realigned_segment, segment_idx):
-
         '''
         '''
 
         new_gaps = []
-        # qs, qe, br, idx = cq
         segment_start = realigned_segment.qstart()
         segment_end = realigned_segment.qend()
         hit = False
@@ -686,8 +700,8 @@ class RealignResultSet(object):
                 new_gaps.append(gap)
             utils.log(self.logging_name, 'debug', 'New gap coords %s'%(",".join([str(x) for x in new_gaps])))
 
-        if not hit:
-            self.sv_event.check_previous_add(realigned_segment)
+        # if not hit:
+        #     self.sv_event.check_previous_add(realigned_segment)
         return new_gaps
 
     # def se_valid(self):
@@ -720,29 +734,29 @@ class RealignManager(object):
         # if contig.contig_fa_fn is None:
         #     return
 
-        self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.%s.psl' % contig.contig_id)
-        chrom = target_region_values[0]
-        start = max(0, target_region_values[1] - self.params.get_param("buffer_size"))
-        end = target_region_values[2] + self.params.get_param("buffer_size")
-        blat_targeted_db = self.params.get_param('reference_fasta_2bit') + ":" + chrom + ":" + str(start) + "-" + str(end)
-        realign_dict = {'binary': self.params.get_param('blat'),
-                        'database': blat_targeted_db, #target_ref_fa_fn,
-                       }
-        utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'target') # Run blat against target reference sequence first for speed.
+        # self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.%s.psl' % contig.contig_id)
+        # chrom = target_region_values[0]
+        # start = max(0, target_region_values[1] - self.params.get_param("buffer_size"))
+        # end = target_region_values[2] + self.params.get_param("buffer_size")
+        # blat_targeted_db = self.params.get_param('reference_fasta_2bit') + ":" + chrom + ":" + str(start) + "-" + str(end)
+        # realign_dict = {'binary': self.params.get_param('blat'),
+        #                 'database': blat_targeted_db, #target_ref_fa_fn,
+        #                }
+        # utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'target') # Run blat against target reference sequence first for speed.
 
-        if self.query_res_fn is None:
-            utils.log(self.logging_name, 'info', 'No blat results file %s, no calls for %s.' % (self.query_res_fn, contig.contig_id))
-            return
-        self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'target')
-        if not self.check_target_blat():
+        # if self.query_res_fn is None:
+        #     utils.log(self.logging_name, 'info', 'No blat results file %s, no calls for %s.' % (self.query_res_fn, contig.contig_id))
+        #     return
+        # self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'target')
+        # if not self.check_target_blat():
             # Blat against whole genome reference fasta
-            realign_dict = {'binary': self.params.get_param('gfclient'),
-                            'blat_port': self.params.get_param('blat_port'),
-                            'database': self.params.get_param('reference_fasta_dir')
-                           }
-            self.query_res_fn = os.path.join(contig.file_path, 'blat_res.genome.%s.psl' % contig.contig_id)
-            utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'genome')
-            self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'genome')
+        realign_dict = {'binary': self.params.get_param('gfclient'),
+                        'blat_port': self.params.get_param('blat_port'),
+                        'database': self.params.get_param('reference_fasta_dir')
+                       }
+        self.query_res_fn = os.path.join(contig.file_path, 'blat_res.genome.%s.psl' % contig.contig_id)
+        utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'genome')
+        self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'genome')
         return self.realign_results
 
     def check_target_blat(self):

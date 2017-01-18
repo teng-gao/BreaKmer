@@ -180,19 +180,20 @@ class SVResult(object):
         self.values['sv_type'] = 'indel'
         self.values['breakpoint_coverages'] = self.get_brkpt_coverages(realigned_segment.reference_brkpts_full)
         self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x, True)) for x in realigned_segment.query_brkpts])
-        self.values['allele_fractions'] = self.get_allele_fraction(self.values['split_read_count'], 0, self.values['breakpoint_coverages'])
+        self.values['allele_fractions'] = self.get_allele_fraction(self.values['split_read_count'], [0], self.values['breakpoint_coverages'])
 
     def get_allele_fraction(self, sr_counts, dr_counts, depth):
         '''
         '''
 
+        max_dr_count = max(dr_counts)
         max_sr_count = 0
         for sr_count_realign in sr_counts.split(";"):
             max_sr_count = max(max_sr_count, max([int(y) for y in sr_count_realign.split(',')]))
         max_depth = max([int(x) for x in depth.split(",")])
         sr_af = float(max_sr_count) / float(max(max_depth, 1))
-        dr_af = float(dr_counts) / float(max(max_depth, 1))
-        af = float(max_sr_count + dr_counts) / float(max(max_depth, 1))
+        dr_af = float(max_dr_count) / float(max(max_depth, 1))
+        af = float(max_sr_count + max_dr_count) / float(max(max_depth, 1))
         return ",".join([str(x) for x in [sr_af, dr_af, af]])
 
     def set_rearrangement_values(self):
@@ -211,7 +212,7 @@ class SVResult(object):
                       'mismatches': [],
                       'repeat_matching': [],
                       'anno_genes': [],
-                      'disc_read_count': 0,
+                      'disc_read_count': [0],
                       'total_matching': [],
                       'allele_fractions': 0
                      }
@@ -245,9 +246,9 @@ class SVResult(object):
                                       'ref_pos': breakpointer.reference_brkpt_positions}
 
             # print 'Breakpoint values', self.breakpoint_values
-            sv_type, sv_subtype, disc_read_support = self.define_rearr(breakpointer.chroms[0], self.disc_reads, breakpointer, res_values['strands'])
+            sv_type, sv_subtypes, disc_read_support = self.define_rearr(breakpointer.chroms[0], self.disc_reads, breakpointer, res_values['strands'])
             res_values['sv_type'] = sv_type
-            res_values['sv_subtype'] = sv_subtype
+            res_values['sv_subtype'] = sv_subtypes
             res_values['disc_read_count'] = disc_read_support
             res_values['anno_genes'] = res_values['anno_genes']
             res_values['target_breakpoints'] = breakpointer.output_str
@@ -258,7 +259,7 @@ class SVResult(object):
             self.breakpoint_values = {'counts': brkpt_counts, 
                                       'rep_filter': brkpt_rep_filter, 
                                       'ref_pos': breakpointer.reference_brkpt_positions}
-            res_values['disc_read_count'] = self.disc_reads.check_clusters(breakpointer.reference_brkpts_full) # self.check_disc_reads(breakpointer.reference_brkpts_full, self.disc_reads)
+            res_values['disc_read_count'] = [self.disc_reads.check_clusters(breakpointer.reference_brkpts_full)] # self.check_disc_reads(breakpointer.reference_brkpts_full, self.disc_reads)
             res_values['sv_type'] = ['rearrangement']
             res_values['sv_subtype'] = ['trl']
             res_values['target_breakpoints'] = breakpointer.output_str
@@ -348,7 +349,7 @@ class SVResult(object):
         for i, ref_brkpt in enumerate(reference_brkpts_full):
             # coverage = 0
             in_target, chrom, bp, strand = ref_brkpt
-            print i, ref_brkpt
+            # print i, ref_brkpt
             try:
                 reads = bamfile.fetch(str(chrom), bp - 20, bp + 20)
             except:
@@ -443,57 +444,57 @@ class SVResult(object):
                         'pattern_matched': False}
 
         # The adjacent realignment segments must not overlap for an inversion or tandem dup event.
-        if not self.check_segment_overlap(tcoords[0], tcoords[1]):
-            utils.log(self.logging_name, 'debug', 'Checking rearrangement svType, strand1 %s, strand2 %s, breakpt1 %d, breakpt2 %d' % (strands[0], strands[1], brkpts[0], brkpts[1]))
-
-            if strands[0] != strands[1]:
-                # Inversion
-                # Get discordantly mapped read-pairs
-                utils.log(self.logging_name, 'debug', 'Inversion event identified.')
-                rearr_values['pattern_matched'] = True
-                rearr_values['sv_subtype'] = 'inversion'
-                # brkpt1 = min(brkpts)
-                # brkpt2 = max(brkpts)
-                # bp_buffer = 20
-                rearr_values['disc_read_count'] = disc_reads.check_clusters_inv(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
-                # for read_pair in disc_reads['inv']:
+        # if not self.check_segment_overlap(tcoords[0], tcoords[1]):
+        utils.log(self.logging_name, 'debug', 'Checking rearrangement svType, strand1 %s, strand2 %s, breakpt1 %d, breakpt2 %d' % (strands[0], strands[1], brkpts[0], brkpts[1]))
+        # print strands
+        if strands[0] != strands[1]:
+            # Inversion
+            # Get discordantly mapped read-pairs
+            utils.log(self.logging_name, 'debug', 'Inversion event identified.')
+            rearr_values['pattern_matched'] = True
+            rearr_values['sv_subtype'] = 'inversion'
+            # brkpt1 = min(brkpts)
+            # brkpt2 = max(brkpts)
+            # bp_buffer = 20
+            rearr_values['disc_read_count'] = disc_reads.check_clusters_inv(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
+            # for read_pair in disc_reads['inv']:
+            #     r1p, r2p, r1s, r2s, qname = read_pair
+            #     if r1s == 1 and r2s == 1:
+            #         if (r1p <= (brkpt1 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer)):
+            #             rearr_values['disc_read_count'] += 1
+            #     else:
+            #         if (r1p <= (brkpt2 + bp_buffer) and r1p >= (brkpt1 - bp_buffer)) and r2p >= (brkpt2 - bp_buffer):
+            #             rearr_values['disc_read_count'] += 1 
+        elif strands[0] == strands[1]:
+            tgap = brkpts[1] - brkpts[0]
+            qgap = qcoords[1][0] - qcoords[0][1]
+            # brkpt1 = min(brkpts)
+            # brkpt2 = max(brkpts)
+            # bp_buffer = 20
+            # if tgap < 0:
+            utils.log(self.logging_name, 'debug', 'Tandem duplication event identified.')
+            rearr_values['pattern_matched'] = True
+            rearr_values['sv_subtype'] = 'tandem_dup'
+            rearr_values['disc_read_count'] = disc_reads.check_clusters_td(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
+                # for read_pair in disc_reads['td']:
                 #     r1p, r2p, r1s, r2s, qname = read_pair
-                #     if r1s == 1 and r2s == 1:
-                #         if (r1p <= (brkpt1 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer)):
-                #             rearr_values['disc_read_count'] += 1
-                #     else:
-                #         if (r1p <= (brkpt2 + bp_buffer) and r1p >= (brkpt1 - bp_buffer)) and r2p >= (brkpt2 - bp_buffer):
-                #             rearr_values['disc_read_count'] += 1 
-            elif strands[0] == strands[1]:
-                tgap = brkpts[1] - brkpts[0]
-                qgap = qcoords[1][0] - qcoords[0][1]
-                # brkpt1 = min(brkpts)
-                # brkpt2 = max(brkpts)
-                # bp_buffer = 20
-                # if tgap < 0:
-                utils.log(self.logging_name, 'debug', 'Tandem duplication event identified.')
-                rearr_values['pattern_matched'] = True
-                rearr_values['sv_subtype'] = 'tandem_dup'
-                rearr_values['disc_read_count'] = disc_reads.check_clusters_td(chrom, (brkpts[0], strands[0]), (brkpts[1], strands[1]))
-                    # for read_pair in disc_reads['td']:
-                    #     r1p, r2p, r1s, r2s, qname = read_pair
-                    #     disc_read_check = (r1p >= (brkpt1 - bp_buffer) and r1p <= (brkpt2 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer))
-                    #     if disc_read_check:
-                    #         rearr_values['disc_read_count'] += 1
-                # elif tgap > qgap:
-                #     # Gapped deletion from Blast result
-                #     utils.log(self.logging_name, 'debug', 'Deletion event identified.')
-                #     rearr_values['hit'] = True
-                #     rearr_values['sv_type'] = 'indel'
-                #     rearr_values['indelSize'] = 'D' + str(tgap)
-                # else:
-                #     # Gapped insertion from Blast result
-                #     utils.log(self.logging_name, 'debug', 'Insertion event identified.')
-                #     rearr_values['hit'] = True
-                #     rearr_values['sv_type'] = 'indel'
-                #     rearr_values['indelSize'] = 'I' + str(qgap)
+                #     disc_read_check = (r1p >= (brkpt1 - bp_buffer) and r1p <= (brkpt2 + bp_buffer)) and (r2p <= (brkpt2 + bp_buffer) and r2p >= (brkpt1 - bp_buffer))
+                #     if disc_read_check:
+                #         rearr_values['disc_read_count'] += 1
+            # elif tgap > qgap:
+            #     # Gapped deletion from Blast result
+            #     utils.log(self.logging_name, 'debug', 'Deletion event identified.')
+            #     rearr_values['hit'] = True
+            #     rearr_values['sv_type'] = 'indel'
+            #     rearr_values['indelSize'] = 'D' + str(tgap)
             # else:
-            #     print 'No inversion, no tandem dup'
+            #     # Gapped insertion from Blast result
+            #     utils.log(self.logging_name, 'debug', 'Insertion event identified.')
+            #     rearr_values['hit'] = True
+            #     rearr_values['sv_type'] = 'indel'
+            #     rearr_values['indelSize'] = 'I' + str(qgap)
+        # else:
+        #     print 'No inversion, no tandem dup'
         # print 'Rearrangement values', rearr_values
         return rearr_values
 
@@ -502,8 +503,8 @@ class SVResult(object):
         '''
 
         sv_type = 'rearrangement'
-        sv_subtype = [None]
-        rs = 0
+        sv_subtypes = []
+        rs = []
         hit = False
 
         # if len(strands) < 3:
@@ -548,7 +549,7 @@ class SVResult(object):
                     rearr_hits[vals['sv_type']] = []
                 rearr_hits[vals['sv_type']].append(vals)
 
-        print 'Rearrangement hits', rearr_hits
+        # print 'Rearrangement hits', rearr_hits
         # print rearr_hits
         if 'rearrangement' not in rearr_hits:
             utils.log(self.logging_name, 'debug', 'Error in realignment parsing. Indel found without rearrangement event.')
@@ -556,19 +557,18 @@ class SVResult(object):
         rearr_hit = False
         for rearr in rearr_hits:
             for i, rr in enumerate(rearr_hits[rearr]):
-                print 'Rearr options', i, rr
+                # print 'Rearr options', i, rr
                 if rearr == 'rearrangement':
-                    if not rearr_hit:
-                        sv_subtype = rr['sv_subtype']
-                        rs = int(rr['disc_read_count'])
-                        rearr_hit = True
-                    else:
-                        print 'Setting subtype to None'
-                        sv_subtype = None
-                        if self.rearr_desc is None:
-                            self.rearr_desc = [sv_subtype]
-                        self.rearr_desc.append(rr['sv_subtype'])
-                        print 'Descriptions', self.rearr_desc
+                    sv_subtypes.append(rr['sv_subtype'])
+                    rs.append(int(rr['disc_read_count']))
+                    rearr_hit = True
+                    # else:
+                    #     # print 'Setting subtype to None'
+                    #     sv_subtype = None
+                    #     if self.rearr_desc is None:
+                    #         self.rearr_desc = [sv_subtype]
+                    #     self.rearr_desc.append(rr['sv_subtype'])
+                    #     # print 'Descriptions', self.rearr_desc
                 else:
                     if self.rearr_desc is None:
                         self.rearr_desc = []
@@ -595,7 +595,9 @@ class SVResult(object):
         #                 ref_brkpt_discreads[i] += 1
         #     rs = max(rs)
 
-        return sv_type, sv_subtype, rs
+        if len(rs) == 0:
+            rs = [0]
+        return sv_type, sv_subtypes, rs
 
     def check_segment_overlap(self, seg1_coords, seg2_coords):
         '''Check if segment1 coordinates overlap with segment2 coordinates.
@@ -764,7 +766,6 @@ class SVEvent(object):
         # self.br_sorted.append((realigned_segment, realigned_segment.get_nmatch_total()))
 
     def check_previous_add(self, new_segment):
-
         '''
         '''
 
