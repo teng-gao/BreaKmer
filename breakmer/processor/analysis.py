@@ -142,6 +142,7 @@ class RunTracker(object):
             # trgt.set_ref_data()
 
             if not trgt.get_sv_reads():
+                print '\tNo SV reads, skipping.'
                 continue
 
             # trgt.compare_kmers()  # Get reference and case kmers
@@ -156,6 +157,8 @@ class RunTracker(object):
                 self.results.extend(trgt.formatted_results)
             else:
                 trgt.rm_output_dir()
+            summary = trgt.region_summary()
+            print '\t', summary
 
         self.write_output()
         time_to_complete = time.clock() - start_time
@@ -175,7 +178,7 @@ class RunTracker(object):
 
         res_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_svs.out")
         result_file = open(res_fn, 'w')
-        header = "\t".join(['genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
+        header = "\t".join(['genes', 'target_breakpoints', 'mismatches', 'strands', 'total_matching', 'sv_type', 'sv_subtype', 'split_read_count', 'disc_read_count', 'breakpoint_depth', 'sr_af,dr_af,total_af', 'contig_id', 'contig_seq']) + "\n"
         result_file.write(header)
 
         for result_str in self.results:

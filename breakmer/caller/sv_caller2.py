@@ -63,6 +63,7 @@ class SVCallManager(object):
                 sv_event = realignment_result_set.sv_event  # get_indel_result()
             elif realignment_result_set.check_svs():
                 sv_event = realignment_result_set.sv_event  #bm.get_svs_result()
+        utils.log(self.logging_name, 'info', 'Returning variant event %s' % None if sv_event is None else sv_event.event_type)
         return sv_event
 
 # class SVCaller(object):
@@ -168,6 +169,9 @@ class FilterManager(object):
             # print 'Filter trl', sv_result.values, sv_result.contig.exact_brkpt_coverages, self.params.get_param('trl_sr_thresh'), 
             if max(sv_result.contig.exact_brkpt_coverages) >= self.params.get_param('trl_sr_thresh'):
                 filter_result = self.filter_trl(sv_result, 0.0)
+            else:
+                # 'FILTERING RESULT', '*'*65
+                filter_result = True
         # if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
         #     # brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'rearr')
 
@@ -198,7 +202,7 @@ class FilterManager(object):
         check2 = top_realigned_segment.get_nmatch_total() < self.params.get_param('rearr_minseg_len')
         # check3 = (in_ff and span_ff)
         check4 = (max(sv_result.values['disc_read_count']) < 1)
-        check3 = (sv_result.values['sv_subtype'] == 'NA')
+        check3 = (sv_result.values['sv_subtype'] == '-')
         filter_result = check1 or check2 or (check3 and check4)
         utils.log(self.logging_name, 'info', 'Check filter for rearrangement')
         # utils.log(self.logging_name, 'info', 'Filter by feature for being in exon (%r) or spanning exon (%r)' % (in_ff, span_ff))
@@ -213,11 +217,11 @@ class FilterManager(object):
         '''
 
         # print 'Valid', sv_result.valid_rearrangement, max(sv_result.breakpoint_values['counts']['min_cov_1left_1right'])
-        filter_result = (not sv_result.valid_rearrangement[1]) or (max(sv_result.breakpoint_values['counts']['min_cov_1left_1right']) < self.params.get_param('trl_sr_thresh')) #or not br_valid[0]
+        filter_result = (not sv_result.valid_rearrangement[1]) or (max(sv_result.breakpoint_values['counts']['exact_cov']) < self.params.get_param('trl_sr_thresh')) #or not br_valid[0]
         utils.log(self.logging_name, 'debug', 'Check translocation filter')
         utils.log(self.logging_name, 'debug', 'All blat result segments are within annotated or pre-specified regions %r' % sv_result.valid_rearrangement[0])
         utils.log(self.logging_name, 'debug', 'All blat result segments are within simple repeat regions that cover > 75.0 percent of the segment %r' % sv_result.valid_rearrangement[1])
-        utils.log(self.logging_name, 'debug', 'The maximum read count support around breakpoints %d meets split read threshold %d' % (max(sv_result.breakpoint_values['counts']['min_cov_1left_1right']), self.params.get_param('trl_sr_thresh')))
+        utils.log(self.logging_name, 'debug', 'The maximum read count support around breakpoints %d meets split read threshold %d' % (max(sv_result.breakpoint_values['counts']['exact_cov']), self.params.get_param('trl_sr_thresh')))
         # utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
         utils.log(self.logging_name, 'debug', 'The maximum repeat overlap by a blat result: %f' % max_repeat)
 
@@ -229,7 +233,7 @@ class FilterManager(object):
                 top_realigned_segment = match_sorted_realignments[0]
                 if (top_realigned_segment.get_nmatch_total() < self.params.get_param('trl_min_seg_len')) or (min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']) < self.params.get_param('trl_sr_thresh')) or sv_result.breakpoint_values['rep_filter']:
                     utils.log(self.logging_name, 'debug', 'Shortest segment is < %d bp with %d discordant reads. Filtering.' % (self.params.get_param('trl_minseg_len'), max(sv_result.values['disc_read_count'])))
-                    utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['min_cov_5left_5right']), self.params.get_param('trl_sr_thresh')))
+                    utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['exact_cov']), self.params.get_param('trl_sr_thresh')))
                     # utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
                     filter_result = True
                 elif max(sv_result.values['disc_read_count']) == 0: 

@@ -984,7 +984,7 @@ def run_fermi(fermi, fq_in, result_fn):
     '''
     '''
     logging_name = 'breakmer.utils'
-    fermi_cmd = '%s -c 2,2 %s > %s' % (fermi, fq_in, result_fn)
+    fermi_cmd = '%s -c 2,2 -l 25 %s > %s' % (fermi, fq_in, result_fn)
     fermi_process = subprocess.Popen(fermi_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     output, errors = fermi_process.communicate()
     log(logging_name, 'info', 'Running fermi assembler: %s' % fermi_cmd)
@@ -1012,12 +1012,12 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
         realign_cmd = None
         if scope == 'genome':
             log(logging_name, 'info', 'Running blat %s, storing results in %s' % (realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -nohead -minScore=25 localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -nohead -minScore=23 localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -nohead localhost %d %s %s %s' % (realign_value_dict['binary'], realign_value_dict['blat_port'], realign_value_dict['database'], query_fn, result_fn)
         else:
             log(logging_name, 'info', 'Running blat %s, storing results in %s'%(realign_value_dict['binary'], result_fn))
-            realign_cmd = '%s -t=dna -q=dna -out=psl -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
+            realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=25 -stepSize=5 -repMatch=2253 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # realign_cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=5 -repMatch=2253 -minMatch=2 -repeats=lower -noHead %s %s %s' % (realign_value_dict['binary'], realign_value_dict['database'], query_fn, result_fn)
             # cmd = '%s -t=dna -q=dna -out=psl -minScore=20 -stepSize=1 -minMatch=1 -repeats=lower -noHead %s %s %s'%(self.params.opts['blat'], db, self.contig_fa_fn, self.query_res_fn)
@@ -1317,8 +1317,12 @@ def get_overlap_index_mm(a, b):
 def get_kmer_set(seq, ksize):
     '''
     '''
-
     return set([seq[i:i + ksize] for i in range(len(seq) - ksize+1)])
+
+def get_kmer_list(seq, ksize):
+    '''
+    '''
+    return [seq[i:i + ksize] for i in range(len(seq) - ksize+1)]
 
 def get_read_kmers(seq,l,skmers):
   kmers = []

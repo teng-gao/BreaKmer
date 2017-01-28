@@ -32,6 +32,7 @@ class RealignedSegment(object):
         self.strand = ''
         self.genes = ''
         self.in_target = False
+        self.target_chr = False
         # self.rep_man = blat_repeat_manager()
         self.in_repeat = False
         self.repeat_overlap = 0.0
@@ -71,7 +72,8 @@ class RealignedSegment(object):
         toffset = 0
         if scope == 'target':
             self.values[13] = query_region[0].replace('chr', '')
-            toffset = query_region[1] - int(params.get_param('buffer_size'))
+            toffset = query_region[1] - int(params.get_param('buffer_size')) # Dev change 1
+            toffset = 0
         tname = self.values[13]
 
         tcoords = [toffset + int(self.values[15]), toffset + int(self.values[16])]
@@ -335,9 +337,13 @@ class RealignedSegment(object):
         br_end = self.get_coords('hit')[1]
         start_in = br_start >= (query_region[1]-200) and br_start <= (query_region[2]+200)
         end_in = br_end <= (query_region[2]+200) and br_end >= (query_region[1]-200)
+        # utils.log(self.logging_name, 'info', 'Setting realigned segment gene annotation: realignment chrom %s, start %s, end %s, start in target %s, end in target %s, query chrom %s, query start %s, query end %s' % (self.get_name('hit'), br_start, br_end, start_in, end_in, query_region[0], query_region[1], query_region[2]))
         if query_region[0] == self.get_name('hit') and (start_in or end_in):
+            self.target_chr = True
             self.in_target = True
             self.genes = query_region[3]
+        elif query_region[0] == self.get_name('hit'):
+            self.target_chr = True
         else:
             ann_genes = []
             chrom = self.get_name('hit')
@@ -397,7 +403,7 @@ class RealignResultSet(object):
         self.realign_result_fn = realign_result_fn
         self.query_region = query_region
         self.scope = scope
-        self.qsize = 0
+        self.qsize = None
         self.hit_freq = []
         self.nmismatches = 0
         self.ngaps = 0
@@ -435,7 +441,10 @@ class RealignResultSet(object):
                 self.realignments.append(realigned_segment)
                 # self.blat_results.append((score, ngaps, in_target, br, perc_ident))
                 self.add_summary_metrics(realigned_segment)
-        self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -x.score, -x.percent_identity, x.ngaps))
+        self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -int(x.target_chr), -int(x.in_target), -x.percent_identity, -x.score, x.ngaps))
+
+        # for realigned_segment in self.realignments:
+        #     print realigned_segment.is_full_query, realigned_segment.score, realigned_segment.percent_identity, realigned_segment.ngaps, realigned_segment.vals['hit'], realigned_segment.vals['query']
 
         # self.blat_results = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], -blat_results[4], blat_results[1]) ) 
 
@@ -445,10 +454,11 @@ class RealignResultSet(object):
 
         self.nmismatches += realigned_segment.get_nmatches('mis')
         self.ngaps += realigned_segment.get_num_gaps()
-        if not self.qsize:
+        if self.qsize is None:
             self.qsize = realigned_segment.get_size('query')
             self.hit_freq = [0]*self.qsize
-        for i in range(realigned_segment.qstart(), realigned_segment.qend()):
+        # print realigned_segment.values, self.hit_freq, realigned_segment.qstart(), realigned_segment.qend(), self.qsize
+        for i in range(realigned_segment.qstart(), min(self.qsize, realigned_segment.qend())):
             self.hit_freq[i] += 1
 
     def check_results_exist(self):
@@ -503,7 +513,8 @@ class RealignResultSet(object):
         '''
 
         has_indel = False
-        for i, realigned_segment in enumerate(self.realignments):
+        score_sorted_realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -x.score, x.ngaps))
+        for i, realigned_segment in enumerate(score_sorted_realignments):
             # br.mean_cov = self.get_mean_cov(br.qstart(), br.qend())
             #keep_clipped = (mean_cov<4 and ((br.get_nmatch_total()<30 and not br.in_repeat) or br.get_nmatch_total()>=30))
             #keep_clipped = keep_clipped or (br.in_target and mean_cov<10)
@@ -623,12 +634,15 @@ class RealignResultSet(object):
             gaps = self.iter_gaps(gaps, realigned_segment, i)
             if self.sv_event.qlen > merged_clip[0]:
                 merged_clip = [self.sv_event.qlen, self.sv_event]
+            if len(gaps) == 0:
+                break
         self.sv_event = merged_clip[1]
         # else:
         #   utils.log(self.logging_name, 'info', 'There are no more than 1 clipped blat results, not continuing with SVs calling.')
 
         # print 'Check valid', self.se_valid()
         valid_result = self.sv_event is not None and (len(self.sv_event.realignments) > 1) and self.sv_event.in_target
+        utils.log(self.logging_name, 'info', 'Variant event is valid (%s), based on sv event exists (%s), number of realigns > 1 (%s), and in target (%s)' % (valid_result, self.sv_event is not None, len(self.sv_event.realignments) > 1, self.sv_event.in_target) )
         if valid_result:
             self.sv_event.set_event_type('rearrangement')
         return valid_result
@@ -685,12 +699,12 @@ class RealignResultSet(object):
                     if (gap_end - segment_end+1) > 10:
                         ngap.append((segment_end + 1, gap_end))
                 if segment_idx == 0:
-                    utils.log(self.logging_name, 'debug', 'Creating SV event from blat result with start %d, end %d'%(segment_start, segment_end))
+                    utils.log(self.logging_name, 'debug', 'Creating SV event from blat result with start %d, end %d, in target %s, segment chrom %s, segment start %s, segment end %s'%(segment_start, segment_end, realigned_segment.in_target, realigned_segment.vals['hit']['name'], realigned_segment.vals['hit']['coords'][0], realigned_segment.vals['hit']['coords'][1]))
                     self.sv_event = results.SVEvent(realigned_segment) #, self.meta_dict['query_region'], self.meta_dict['contig_vals'], self.meta_dict['sbam'])
                     new_gaps.extend(ngap)
                     hit = True
                 elif self.check_add_br(segment_start, segment_end, gap_start, gap_end, realigned_segment):
-                    utils.log(self.logging_name, 'debug', 'Adding blat result to event')
+                    utils.log(self.logging_name, 'debug', 'Adding blat result to event, in target %s' % realigned_segment.in_target)
                     new_gaps.extend(ngap)
                     self.sv_event.add(realigned_segment)
                     hit = True
@@ -736,9 +750,9 @@ class RealignManager(object):
 
         # self.query_res_fn = os.path.join(contig.file_path, 'blat_res.target.%s.psl' % contig.contig_id)
         # chrom = target_region_values[0]
-        # start = max(0, target_region_values[1] - self.params.get_param("buffer_size"))
-        # end = target_region_values[2] + self.params.get_param("buffer_size")
-        # blat_targeted_db = self.params.get_param('reference_fasta_2bit') + ":" + chrom + ":" + str(start) + "-" + str(end)
+        # # start = max(0, target_region_values[1] - self.params.get_param("buffer_size"))
+        # # end = target_region_values[2] + self.params.get_param("buffer_size")
+        # blat_targeted_db = self.params.get_param('reference_fasta_2bit') + ":" + chrom
         # realign_dict = {'binary': self.params.get_param('blat'),
         #                 'database': blat_targeted_db, #target_ref_fa_fn,
         #                }
