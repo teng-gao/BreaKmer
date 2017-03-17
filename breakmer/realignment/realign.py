@@ -441,8 +441,8 @@ class RealignResultSet(object):
                 self.realignments.append(realigned_segment)
                 # self.blat_results.append((score, ngaps, in_target, br, perc_ident))
                 self.add_summary_metrics(realigned_segment)
-        self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -int(x.target_chr), -int(x.in_target), -x.percent_identity, -x.score, x.ngaps))
-
+        # self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -int(x.target_chr), -int(x.in_target), -x.percent_identity, -x.score, x.ngaps))
+        self.realignments = sorted(self.realignments, key=lambda x: (-int(x.is_full_query), -int(x.in_target), -x.score, -x.percent_identity, x.ngaps))
         # for realigned_segment in self.realignments:
         #     print realigned_segment.is_full_query, realigned_segment.score, realigned_segment.percent_identity, realigned_segment.ngaps, realigned_segment.vals['hit'], realigned_segment.vals['query']
 
@@ -625,6 +625,8 @@ class RealignResultSet(object):
         utils.log(self.logging_name, 'info', 'Checking for SVs')
         gaps = [(0, self.qsize)]
 
+        contig_realigns = [(0, self.qsize, 'gap')]
+
         # if len(self.clipped_qs) > 1:
         utils.log(self.logging_name, 'debug', 'Iterating through %d clipped blat results.' % len(self.realignments))
         merged_clip = [0, None]
@@ -667,11 +669,14 @@ class RealignResultSet(object):
         utils.log(self.logging_name, 'debug', 'Event in target %r and blat result in target %r' % (self.sv_event.in_target, br.in_target))
         if over_perc >= 50 and (max_seg_overlap < 30 or (br.in_target and self.sv_event.in_target)): # and (self.se.in_target or br.in_target): 
             add = True
+        # elif 
         utils.log(self.logging_name, 'debug', 'Add blat result to SV event %r' % add)
         return add
 
     def iter_gaps(self, gaps, realigned_segment, segment_idx):
         '''
+        1. gaps = (0, contig length)
+        2. 
         '''
 
         new_gaps = []

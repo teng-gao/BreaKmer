@@ -528,7 +528,7 @@ class AssemblyBatch(object):
             self.start = read.reference_start
             self.add_read(read, read_kmers)
             return True
-        elif abs(self.last_pos - read.reference_start) > 3*len(read.query_sequence): # and self.nreads > 10000:
+        elif abs(self.last_pos - read.reference_start) > 20*len(read.query_sequence): # and self.nreads > 10000:
             # Reject read and make it go into a new batch
             # Close the files.
             # print 'Closing batch'
@@ -1498,6 +1498,7 @@ class TargetManager(object):
 
         utils.log(self.logging_name, 'info', 'Resolving structural variants from %d kmer clusters' % len(self.contigs))
         self.results = self.call_manager.resolve_sv_calls(self.contigs, self.files['target_ref_fn'][0], self.get_values(), self.dr_clusters, self.sv_reads)
+        # print self.results[0].values
 
         # print self.results
         # sys.exit()

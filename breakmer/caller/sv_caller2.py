@@ -48,6 +48,7 @@ class SVCallManager(object):
             if not sv_result.filter:
                 sv_results.append(sv_result)
         # disc_read_clusters.check_cluster_event()
+        # print sv_results
         return sv_results
 
     def make_call(self, contig, region_values, realignment_result_set):

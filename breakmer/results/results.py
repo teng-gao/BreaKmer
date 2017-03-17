@@ -274,7 +274,7 @@ class SVResult(object):
         # print 'Setting split read counts, set rearrangement values', [str(self.contig.get_brkpt_coverage(x[0], True)) for x in breakpointer.queue[1]], breakpointer.queue
         # print 'Setting split read count'
         # print breakpointer.queue[1], [str(self.contig.get_brkpt_coverage(x[0], True)) for x in breakpointer.queue[1]]
-        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x[0], True)) for x in breakpointer.queue[1]])
+        self.values['split_read_count'] = ",".join([str(self.contig.get_brkpt_coverage(x[0], True, 'set_values_sr')) for x in breakpointer.queue[1]])
         self.values['allele_fractions'] = self.get_allele_fraction(self.values['split_read_count'], res_values['disc_read_count'], self.values['breakpoint_coverages'])
         self.valid_rearrangement = valid_rearrangement
 
