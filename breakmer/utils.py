@@ -997,7 +997,7 @@ def skip_read(aligned_read, insertsize_thresh):
     '''
     '''
 
-    no_cigar = len(aligned_read.cigartuples) == 1
+    no_cigar = False if aligned_read.cigartuples is None else len(aligned_read.cigartuples) == 1
     flag_ok = aligned_read.flag in [83, 163, 99, 147]
     insertsize_ok = abs(aligned_read.template_length) < insertsize_thresh
     return no_cigar and flag_ok and insertsize_ok
