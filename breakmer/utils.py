@@ -338,13 +338,14 @@ def start_blat_server(params):
     os.chdir(params.get_param('reference_fasta_dir'))
 
     # Start gfServer, change dir to 2bit file, gfServer start localhost 8000 .2bit
-    params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%s.log' % params.get_param('blat_port')))
-    gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %s %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
+    params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%d.log' % params.get_param('blat_port')))
+    gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     start_time = time.time()
     gfserver_state = server_ready(params.get_param('gfserver_log'))
     while gfserver_state != 'ready':  # Wait for the blat server to initiate. Timeout if it has not started in 15 minutes.
+        print("Trying to start blat server")
         new_time = time.time()
         wait_time = new_time - start_time
         if (wait_time > 1000) or gfserver_state == 'error':
@@ -459,7 +460,7 @@ def run_jellyfish(fa_fn, jellyfish, kmer_size):
         log(logging_name, 'info', 'Jellyfish dump output %s and errors %s' % (output, errors))
         marker_cmd = 'touch %s' % dump_marker_fn
         marker_process = subprocess.Popen(marker_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
-        output, errors = marker_process.communicate()  
+        output, errors = marker_process.communicate()
         log(logging_name, 'info', 'Completed jellyfish dump %s, touching marker file %s' % (dump_fn, dump_marker_fn))
         count_fns = glob.glob(os.path.join(file_path, "*mers_counts*"))
 
@@ -477,7 +478,7 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
 
     logging_name = 'breakmer.utils'
     chrom, start_coord, end_coord, name, intervals = gene_coords
-    marker_fn = get_marker_fn(target_fa_fn) 
+    marker_fn = get_marker_fn(target_fa_fn)
 
     if not os.path.isfile(marker_fn):
         ref_d = SeqIO.to_dict(SeqIO.parse(ref_fa, 'fasta'))
@@ -498,7 +499,7 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
     else:
         log(logging_name, 'info', 'Refseq sequence fasta (%s) exists already' % target_fa_fn)
 
-    return target_fa_fn 
+    return target_fa_fn
 
 
 def setup_ref_data(setup_params):
@@ -513,10 +514,10 @@ def setup_ref_data(setup_params):
     for gene in genes:
         chrom, bp1, bp2, name, intvs = gene
         gene_ref_path = os.path.join(ref_path, name)
-        if rep_mask: 
+        if rep_mask:
             logger.info('Extracting repeat mask regions for target gene %s.' % name)
             setup_rmask(gene, gene_ref_path, rep_mask)
-    
+
         logger.info('Extracting refseq sequence for %s, %s:%d-%d' % (name, chrom, bp1, bp2))
         directions = ['forward', 'reverse']
         for direction in directions:
@@ -562,34 +563,34 @@ def get_fastq_reads(fn, sv_reads):
         indel_only = qname_split[-1]
         qname = "_".join(qname_split[0:len(qname_split)-1])
         add = False
-        if qname in sv_reads: 
+        if qname in sv_reads:
             oseq, sc_seqs, clip_coords, indel_meta = sv_reads[qname]
-            cleaned_seq = seq 
+            cleaned_seq = seq
             old_seq = oseq.seq
             add = True
             if str(cleaned_seq) != str(old_seq) and sc_seqs:
                 sc_clips = sc_seqs['clipped']
                 idx = old_seq.find(cleaned_seq)
                 trimmed_seq = ''
-                if idx == 0: 
+                if idx == 0:
                     trimmed_seq = old_seq[len(cleaned_seq):len(old_seq)]
-                else: trimmed_seq = old_seq[0:idx]    
+                else: trimmed_seq = old_seq[0:idx]
                 sc_lens = 0
-                for sc_seq in sc_clips: 
+                for sc_seq in sc_clips:
                     sc_lens += len(sc_seq)
-                    if trimmed_seq.find(sc_seq) > -1: 
+                    if trimmed_seq.find(sc_seq) > -1:
                         add = False
                 if len(cleaned_seq) == (len(old_seq) - sc_lens):
-                    for sc_seq in sc_clips: 
+                    for sc_seq in sc_clips:
                         if cleaned_seq.find(sc_seq) == -1:
                       # Don't add, just trimmed clipped portion.
                             add = False
         if add:
-            filt_fq.write(header + "\n" + seq + "\n+\n" + qual + "\n") 
+            filt_fq.write(header + "\n" + seq + "\n+\n" + qual + "\n")
             fr = fq_read(header, seq, qual, indel_meta)
-            read_len = max(read_len, len(fr.seq)) 
+            read_len = max(read_len, len(fr.seq))
             seq = fr.seq
-            if seq not in fq_recs: 
+            if seq not in fq_recs:
                 fq_recs[seq] = []
             fq_recs[seq].append(fr)
     filt_fq.close()
@@ -656,7 +657,7 @@ def get_clip_coords(read_quals, read_cigar):
         if (code != 2) and (code != 4):
             coords[1] += clen
         if code == 4:
-            if i == 0: 
+            if i == 0:
                 coords[0] = clen
                 coords[1] += clen
         clip_coords = coords
@@ -825,7 +826,7 @@ def remove_outliers(lst):
 
 
 def percentile(lst, percent, key=lambda x: x):
-    
+
     '''Find the percentile of a list of values.
     Args:
         lst (list):       A list of numeric values.
@@ -909,7 +910,7 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
     ref_target_seq = str(record.seq)
     end = min(len(ref_target_seq), 1500)
     start = max(0,len(ref_target_seq)-1500)
-    fa_out.write(">"+record.id + "_start\n" + ref_target_seq[0:end] + "\n>" + record.id + "_end\n" + ref_target_seq[start:len(ref_target_seq)] + "\n") 
+    fa_out.write(">"+record.id + "_start\n" + ref_target_seq[0:end] + "\n>" + record.id + "_end\n" + ref_target_seq[start:len(ref_target_seq)] + "\n")
     fa_out.close()
 
     cmd = 'touch %s'%get_marker_fn(test_fa_out)
@@ -917,7 +918,7 @@ def create_ref_test_fa(target_fa_in, test_fa_out):
     output, errors = p.communicate()
     return True
   else:
-    return False  
+    return False
 
 def run_blat(realign_value_dict, result_fn, query_fn, scope):
 
@@ -944,7 +945,7 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
     else:
         log(logging_name, 'info', 'Blat already run, results file %s exists, continuing' % result_fn)
 
-# def get_altref_genecoords(blat_path, altref_fa, query_fa_fn, chr, out_fn): 
+# def get_altref_genecoords(blat_path, altref_fa, query_fa_fn, chr, out_fn):
 #   altref_twobit = os.path.splitext(altref_fa)[0] + ".2bit"
 #   blat_db = altref_twobit + ":" + str(chr)
 #   cmd = "%s -noHead %s %s %s"%(blat_path, blat_db, query_fa_fn, out_fn)
@@ -959,22 +960,22 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
 #     linesplit = line.split()
 #     res_id = linesplit[9]
 #     if res_id.find("start") > -1:
-#       if coords[0][0] < int(linesplit[0]): 
+#       if coords[0][0] < int(linesplit[0]):
 #         coords[0][0] = int(linesplit[0])
 #         coords[0][1] = int(linesplit[15])
 #         hits[0] = True
-#     elif res_id.find("end") > -1: 
+#     elif res_id.find("end") > -1:
 #       if coords[1][0] < int(linesplit[0]):
 #         coords[1][0] = int(linesplit[0])
 #         coords[1][1] = int(linesplit[16])
 #         hits[1] = True
 #   coords[2] = hits[0] and hits[1]
-#   blat_res.close() 
+#   blat_res.close()
 # #  os.remove(out_fn)
 #   return coords
 
 def calc_contig_complexity(seq, N=3, w=6):
-  cmers = [] 
+  cmers = []
   for i in range(len(seq)):
     s = max(0,i-w)
     e = min(len(seq),i+w)
@@ -990,7 +991,7 @@ def count_nmers(seq, N):
   total_possible = len(seq) - 2
   for i in range(len(seq) - (N - 1)):
     mer = str(seq[i:i+N]).upper()
-    if mer not in nmers: nmers[mer] = 0 
+    if mer not in nmers: nmers[mer] = 0
     nmers[mer] += 1
   return nmers
 
@@ -1000,9 +1001,9 @@ def filter_by_feature(brkpts, query_region, keep_intron_vars):
   span_filter = False
   if not keep_intron_vars:
     in_vals, span_vals = check_intervals(brkpts, query_region)
-    if in_vals[0]: 
-      if 'exon' not in in_vals[1]: 
-        in_filter = True 
+    if in_vals[0]:
+      if 'exon' not in in_vals[1]:
+        in_filter = True
     else:
       in_filter = True
     if span_vals[0]:
@@ -1022,7 +1023,7 @@ def check_intervals(breakpts, query_region):
   in_interval = None
   for bp in breakpts:
     for interval in query_region[4]:
-      if (int(bp) >= (interval[1]-20)) and (int(bp) <= (interval[2]+20)): 
+      if (int(bp) >= (interval[1]-20)) and (int(bp) <= (interval[2]+20)):
         in_values[1].append(interval[4])
         in_values[0] = True
         in_values[2].append(interval)
@@ -1047,7 +1048,7 @@ def check_repeat_regions(coords, repeat_locs):
       rep_overlap += float(min(rbp2,end)-max(rbp1,start))
       rep_coords.append((rbp1,rbp2))
       # Simple or low complexity seq repeat for filtering
-      if rname.find(")n") > -1 or rname.find("_rich") > -1: 
+      if rname.find(")n") > -1 or rname.find("_rich") > -1:
         if (rbp1<=start and rbp2>=start): filter_reps_edges[0] = True
         elif (rbp1<=end and rbp2>=end): filter_reps_edges[1] = True
 #      if rep_overlap >= seg_len:
@@ -1066,33 +1067,33 @@ def get_marker_fn(fn):
 #   fq_recs = {}
 #   f = open(fn,'r')
 # #  fq_recs = list(SeqIO.parse(f,'fastq'))
-#   for header,seq,qual in FastqFile(fn): 
+#   for header,seq,qual in FastqFile(fn):
 #     qname = header.lstrip("@")
-#     if qname in sv_reads: 
+#     if qname in sv_reads:
 #       oseq, sc_seqs, clip_coords = sv_reads[qname]
-#       cleaned_seq = seq 
+#       cleaned_seq = seq
 #       old_seq = oseq.seq
 #       add = True
 #       if str(cleaned_seq) != str(old_seq) and sc_seqs:
 #         idx = old_seq.find(cleaned_seq)
 #         trimmed_seq = ''
-#         if idx == 0: 
+#         if idx == 0:
 #           trimmed_seq = old_seq[len(cleaned_seq):len(old_seq)]
-#         else: trimmed_seq = old_seq[0:idx]    
+#         else: trimmed_seq = old_seq[0:idx]
 #         sc_lens = 0
-#         for sc_seq in sc_seqs: 
+#         for sc_seq in sc_seqs:
 #           sc_lens += len(sc_seq)
-#           if trimmed_seq.find(sc_seq) > -1: 
+#           if trimmed_seq.find(sc_seq) > -1:
 #             add = False
 #         if len(cleaned_seq) == (len(old_seq) - sc_lens):
-#           for sc_seq in sc_seqs: 
+#           for sc_seq in sc_seqs:
 #             if cleaned_seq.find(sc_seq) == -1:
 #               # Don't add, just trimmed clipped portion.
 #               add = False
 # #    else: print qname, 'not in sv reads'
 #     if add:
 #       fr = fq_read(header, seq, qual)
-#       read_len = max(read_len, len(fr.seq))   
+#       read_len = max(read_len, len(fr.seq))
 #       fq_recs[fr.id] = fr
 #   return fq_recs, read_len
 
@@ -1145,7 +1146,7 @@ def setup_rmask(gene_coords, ref_path, rmask_fn):
       rchr,rbp1,rbp2,rname = line.split("\t")[0:4]
       rchr = rchr.replace('chr','')
       if rchr == chrom:
-        if int(rbp1) >= int(s) and int(rbp2) <= int(e): 
+        if int(rbp1) >= int(s) and int(rbp2) <= int(e):
           fout.write("\t".join([str(x) for x in [rchr,int(rbp1),int(rbp2),rname]])+"\n")
           rmask.append((rchr,int(rbp1),int(rbp2),rname))
     f.close()
@@ -1153,7 +1154,7 @@ def setup_rmask(gene_coords, ref_path, rmask_fn):
 
     cmd = 'touch %s'%marker_fn
     p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    output, errors = p.communicate()  
+    output, errors = p.communicate()
     logger.info('Completed writing repeat mask file %s, touching marker file %s'%(mask_out_fn,marker_fn))
   else:
     rep_f = open(mask_out_fn,'rU')
@@ -1190,16 +1191,16 @@ def get_overlap_index_mm(a, b):
     c = 0
     match_len = min(len(a[i:]), len(b[:len(a[i:])]))
     for aa,bb in zip(a[i:],b[:len(a[i:])]):
-      if aa != bb: 
+      if aa != bb:
         nmismatch[0] += 1
         nmismatch[1] += 1
       else:
         nmismatch[0] = 0
-      if nmismatch[0] > 1 or nmismatch[1] > 3: 
-        break  
+      if nmismatch[0] > 1 or nmismatch[1] > 3:
+        break
       c += 1
 #    print c, match_len, i, c== match_len, a[i:], b[:len(a[i:])]
-    if c == match_len: 
+    if c == match_len:
       match = True
     i += 1
   return i-1

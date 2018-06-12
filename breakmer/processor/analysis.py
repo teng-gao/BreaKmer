@@ -185,7 +185,7 @@ class RunTracker(object):
         # result_files = {}
         # for res in self.results:
         #     tag = res[6]
-        #     if tag not in result_files:  
+        #     if tag not in result_files:
         #         header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
 
         #         res_fn = os.path.join(self.params.paths['output'], self.params.opts['analysis_name'] + "_" + tag + "_svs.out")
