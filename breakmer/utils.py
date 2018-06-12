@@ -338,7 +338,7 @@ def start_blat_server(params):
     os.chdir(params.get_param('reference_fasta_dir'))
 
     # Start gfServer, change dir to 2bit file, gfServer start localhost 8000 .2bit
-    params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%d.log' % params.get_param('blat_port')))
+    params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%s.log' % params.get_param('blat_port')))
     gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
