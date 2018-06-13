@@ -141,8 +141,6 @@ class RunTracker(object):
             # if not self.params.opts['preset_ref_data']:
             trgt.set_ref_data()
 
-            pdb.set_trace()
-
             if not trgt.get_sv_reads():
                 continue
 

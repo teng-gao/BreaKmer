@@ -50,7 +50,7 @@ def add_discordant_pe(aread, read_d, bamfile):
     if aread.mapq > 0 and ((aread.rnext != -1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
         mate_refid = bamfile.getrname(aread.rnext)  # Grab the paired read
         # mate_read = None
-        # try:    
+        # try:
         #     mate_read = bamfile.mate(aread)
         # except:
         #     print 'Skipping read'
@@ -218,6 +218,8 @@ class TargetManager(object):
         '''
         '''
 
+        pdb.set_trace()
+
         self.extract_bam_reads('sv')
         if 'normal_bam_file' in self.params.opts:
             self.extract_bam_reads('norm')
@@ -252,7 +254,7 @@ class TargetManager(object):
             bam_type = 'normal'
 
         utils.log(self.logging_name, 'info', 'Extracting bam reads from %s to %s' % (self.params.opts['%s_bam_file' % bam_type], self.files['sv_fq']))
-        
+
         bamfile = pysam.Samfile(self.params.opts['%s_bam_file' % bam_type], 'rb')
         if sample_type == 'sv':
             sv_bam = pysam.Samfile(self.files['sv_bam'], 'wb', template=bamfile)
@@ -308,15 +310,15 @@ class TargetManager(object):
 
         # for aread, proper_map, overlap_reads in valid_reads:  # Deprecated
             # Only take soft-clips from outer regions of properly mapped reads, take all others
-            if (aligned_read.cigar is None) or (len(aligned_read.cigar) <= 1):  # cigar is a list of tuples 
+            if (aligned_read.cigar is None) or (len(aligned_read.cigar) <= 1):  # cigar is a list of tuples
                 continue
 
-        # if aligned_read.cigar and len(aligned_read.cigar) > 1:  
+        # if aligned_read.cigar and len(aligned_read.cigar) > 1:
             trim_coords = utils.trim_coords(aligned_read.qual, 3)  # Identify the read positions with qual > 2
             clip_coords = utils.get_clip_coords(aligned_read.qual, aligned_read.cigar)
 
-            # Only keep reads that have a soft clip in sequence that has not been trimmed 
-            # due to low quality sequence.           
+            # Only keep reads that have a soft clip in sequence that has not been trimmed
+            # due to low quality sequence.
             # if clip_coords[0] > trim_coords[0] or clip_coords[1] < trim_coords[1]:  # Deprecated
             if clip_coords[0] <= trim_coords[0] and clip_coords[1] >= trim_coords[1]:
                 continue
@@ -333,18 +335,18 @@ class TargetManager(object):
             if start_sc and end_sc:
                 add_sc = [True, True]
             else:
-                if start_sc: 
+                if start_sc:
                     add_sc[0] = True
                     new_clip_coords = [0, start_coord]
-                    if overlap_reads and aligned_read.is_reverse: 
+                    if overlap_reads and aligned_read.is_reverse:
                         mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
                         add_sc[0] = self.check_pair_overlap(mate_seq, aligned_read, [0, start_coord], 'back')
                     if proper_map:
                         indel_only = aligned_read.is_reverse
-                elif end_sc: 
+                elif end_sc:
                     new_clip_coords = [end_coord, len(seq)]
                     add_sc[1] = True
-                    if overlap_reads and not aligned_read.is_reverse: 
+                    if overlap_reads and not aligned_read.is_reverse:
                         mate_seq = valid_reads[pair_indices[aligned_read.qname][int(aligned_read.is_read1)]][0].seq
                         add_sc[1] = self.check_pair_overlap(mate_seq, aligned_read, [end_coord, len(seq)], 'front')
                     if proper_map:
@@ -375,13 +377,13 @@ class TargetManager(object):
         for qname in read_d['sv']:
             aligned_read, sc_seq, clip_coords, indel_only = read_d['sv'][qname]
             self.sv_reads[sample_type][qname] = read_d['sv'][qname]
-            if sample_type == 'sv': 
+            if sample_type == 'sv':
                 sv_bam.write(aligned_read)
             lout = utils.fq_line(aligned_read, indel_only, int(self.params.get_param('kmer_size')), True)
             if lout is not None:
                 sv_fq.write(lout)
             if sc_seq:
-                for clip_seq in sc_seq['buffered']: 
+                for clip_seq in sc_seq['buffered']:
                     sv_sc_fa.write(">" + qname + "\n" + clip_seq + "\n")
         self.disc_reads = {'disc':read_d['disc'], 'inv':read_d['inv_reads'], 'td':read_d['td_reads'], 'other':read_d['other']}
         sv_fq.close()
@@ -481,7 +483,7 @@ class TargetManager(object):
         utils.log(self.logging_name, 'info', 'Writing %d sample-only kmers to file %s' % (len(self.kmers['case_only']), self.files['sample_kmers']))
         self.files['kmer_clusters'] = os.path.join(self.paths['kmers'], self.name + "_sample_kmers_merged.out")
         utils.log(self.logging_name, 'info', 'Writing kmer clusters to file %s' % self.files['kmer_clusters'])
-        
+
         self.contigs = assembler.init_assembly(self.kmers['case_only'], self.cleaned_read_recs['sv'], kmer_size, int(self.params.get_param('trl_sr_thresh')), self.params.get_param('read_len'))
         self.cleaned_read_recs = None
         self.kmers['case_only'] = {}
@@ -562,10 +564,10 @@ class TargetManager(object):
         '''
 
         # Write rmask bed file if needed.
-        # if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts: 
+        # if not self.params.opts['keep_repeat_regions'] and 'repeat_mask_file' in self.params.opts:
         #   self.logger.info('Extracting repeat mask regions for target gene %s.' % self.name)
         #   self.repeat_mask = setup_rmask(self.get_values(), self.paths['ref_data'], self.params.opts['repeat_mask_file'])
-         
+
         # Write reference fasta file if needed.
         for target_refseq_fn in self.files['target_ref_fn']:
             direction = "forward"
@@ -580,7 +582,7 @@ class TargetManager(object):
     #     '''
 
     #     # Iterate through genes in target list and find repeats in those genes.
-    #     self.repeat_mask = [] 
+    #     self.repeat_mask = []
     #     if not os.path.isfile(marker_fn):
     #       out_fn = self.files['rep_mask_fn']
     #       fout = open(out_fn,'w')
@@ -591,14 +593,14 @@ class TargetManager(object):
     #         rchr,rbp1,rbp2,rname = line.split("\t")[0:4]
     #         rchr = rchr.replace('chr','')
     #         if rchr == self.chrom:
-    #           if int(rbp1) >= self.start and int(rbp2) <= self.end: 
+    #           if int(rbp1) >= self.start and int(rbp2) <= self.end:
     #             fout.write("\t".join([str(x) for x in [rchr,int(rbp1),int(rbp2),rname]])+"\n")
     #             self.repeat_mask.append((rchr,int(rbp1),int(rbp2),rname))
     #       f.close()
     #       fout.close()
     #       cmd = 'touch %s'%marker_fn
     #       p = subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,shell=True)
-    #       output, errors = p.communicate()  
+    #       output, errors = p.communicate()
     #       self.logger.info('Completed writing repeat mask file %s, touching marker file %s'%(out_fn,marker_fn))
     #     else:
     #       rep_f = open(self.files['rep_mask_fn'],'rU')
@@ -615,10 +617,10 @@ class TargetManager(object):
     #     if aread.mapq > 0 and ((aread.rnext!=-1 and aread.tid != aread.rnext) or abs(aread.tlen) > 1000) and not aread.mate_is_unmapped:
     #       mate_refid = bamfile.getrname(aread.rnext)
     #       mate_read = bamfile.mate(aread)
-    #       if mate_read.mapq > 0: 
+    #       if mate_read.mapq > 0:
     #         if mate_refid not in read_d['disc']: read_d['disc'][mate_refid] = []
     #         read_d['disc'][mate_refid].append((aread.pos, aread.pnext))
-         
+
     #     if aread.mapq > 0 and not aread.mate_is_unmapped and aread.tid == aread.mrnm:
     #       if aread.is_read1:
     #         read_positions = None
@@ -629,7 +631,7 @@ class TargetManager(object):
     #           read_d['inv_reads'].append(read_positions)
     #         elif not aread.is_reverse and not aread.mate_is_reverse:
     #           # forward -- forward = samflag 67 (note: only considering read1, read2 samflag 131)
-    #           read_positions = (aread.pos, aread.mpos, 1, 1, qname) 
+    #           read_positions = (aread.pos, aread.mpos, 1, 1, qname)
     #           if aread.mpos < aread.pos: read_positions = (aread.mpos, aread.pos, 1, 1, qname)
     #           read_d['inv_reads'].append(read_positions)
     #         elif aread.is_reverse and not aread.mate_is_reverse and aread.pos < aread.mpos:
@@ -647,13 +649,13 @@ class TargetManager(object):
     #     '''
     #     '''
 
-    #     # First check if read is from a proper paired-end mapping --> <--    
+    #     # First check if read is from a proper paired-end mapping --> <--
     #     proper_map = False
     #     overlap_reads = False
     #     if ( ((aread.flag==83) or (aread.flag==147)) and (aread.isize<0) ) or (((aread.flag==99) or (aread.flag==163)) and (aread.isize>0)):
     #       proper_map = True
     #       if abs(aread.isize) < 2*len(aread.seq):
-    #         overlap_reads = True   
+    #         overlap_reads = True
     #     return proper_map, overlap_reads
 
     def check_overlap(self, dir, mseq, sc_seq):
@@ -675,11 +677,11 @@ class TargetManager(object):
         add_sc = True
         sc_seq = read.seq[coords[0]:coords[1]]
         sc_len = coords[1] - coords[0]
-        
+
         if abs(read.isize) < len(read.seq):
             # Adapter seq
-            if abs(len(read.seq) - (abs(read.isize)+1)) >= sc_len: 
-                add_sc = False 
+            if abs(len(read.seq) - (abs(read.isize)+1)) >= sc_len:
+                add_sc = False
     #           print 'Adapter seq', sc_len, abs(read.isize), abs(len(read.seq) - abs(read.isize)), add_sc
         else:
             # abs((2*len(read.seq) - (abs(read.isize)+1)) - sc_len) < 5: add_sc_len_check = False
@@ -712,9 +714,9 @@ class TargetManager(object):
     #     result_files = {}
     #     for res in self.results:
     #         tag = res[6]
-    #         if tag.find('rearrangement') > -1: 
+    #         if tag.find('rearrangement') > -1:
     #             tag = 'rearrangement'
-    #         if tag not in result_files:  
+    #         if tag not in result_files:
     #             header = "\t".join(['genes', 'target_breakpoints', 'align_cigar', 'mismatches', 'strands', 'rep_overlap_segment_len', 'sv_type', 'split_read_count', 'nkmers', 'disc_read_count', 'breakpoint_coverages', 'contig_id', 'contig_seq']) + "\n"
     #             res_fn = os.path.join(self.paths['output'], self.name + "_" + tag + "_svs.out")
     #             utils.log(self.logging_name, 'info', 'Writing %s results to file %s' % (tag, res_fn))
@@ -751,16 +753,16 @@ class TargetManager(object):
         rearr_genes = []
         for res in self.results:
           tag = res[6]
-          if tag.find('rearrangement') > -1: 
+          if tag.find('rearrangement') > -1:
             tag = 'rearrangement'
           if tag == 'rearrangment':
             genes = res[0].split(",")
             genes.sort()
             rearr_genes.append(";".join(genes))
-          else: 
+          else:
             self.svs[tag][0] += 1
             total += 1
-        if len(set(rearr_genes)) > 0: 
+        if len(set(rearr_genes)) > 0:
           total += len(set(rearr_genes))
           self.svs[tag][0] = len(set(rearr_genes))
           self.svs[tag][1] = ",".join(list(set(rearr_genes)))
