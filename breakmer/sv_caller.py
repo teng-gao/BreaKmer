@@ -14,7 +14,7 @@ import math
 import logging
 import breakmer.utils as utils
 import pdb
-
+import subprocess
 
 __author__ = "Ryan Abo"
 __copyright__ = "Copyright 2015, Ryan Abo"
@@ -576,7 +576,6 @@ class blat_manager(object):
   def write_mod_result_file(self, fn):
     blat_ff = open(fn,'w')
     for br in self.blat_results:
-      pdb.set_trace()
       blat_ff.write(br[3].get_blat_output() + "\n")
     blat_ff.close()
 
