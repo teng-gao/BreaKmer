@@ -456,6 +456,7 @@ class RealignResultSet(object):
         '''
 
         blat_ff = open(filename, 'w')
+        pdb.set_trace()
         for realignment in self.realignments:
             blat_ff.write(realignment.get_blat_output() + '\n')
         blat_ff.close()
@@ -751,8 +752,6 @@ class RealignManager(object):
 
         # am = sv_caller.align_manager(meta_dict)
         # hit, self.query_res_fn = am.check_target_results()
-
-        pdb.set_trace()
 
         hit = False
         utils.log(self.logging_name, 'info', 'Checking if target blat contains most of query or if whole genome needs to queried.')
