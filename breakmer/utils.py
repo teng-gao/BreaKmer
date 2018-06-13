@@ -346,7 +346,7 @@ def start_blat_server(params):
     start_time = time.time()
     gfserver_state = server_ready(params.get_param('gfserver_log'))
     while gfserver_state != 'ready':  # Wait for the blat server to initiate. Timeout if it has not started in 15 minutes.
-        print("Trying to start blat server")
+        print("Trying to start blat server..")
         new_time = time.time()
         wait_time = new_time - start_time
         if (wait_time > 1000) or gfserver_state == 'error':
@@ -356,6 +356,7 @@ def start_blat_server(params):
         time.sleep(60)
         gfserver_state = server_ready(params.get_param('gfserver_log'))
     log(logging_name, 'info', 'Server ready!')
+    print("Blat server ready")
     os.chdir(curdir)
 
 
@@ -998,9 +999,10 @@ def count_nmers(seq, N):
 
 
 def filter_by_feature(brkpts, query_region, keep_intron_vars):
-  in_filter = False
-  span_filter = False
-  if not keep_intron_vars:
+    pdb.set_trace()
+    in_filter = False
+    span_filter = False
+    if not keep_intron_vars:
     in_vals, span_vals = check_intervals(brkpts, query_region)
     if in_vals[0]:
       if 'exon' not in in_vals[1]:
@@ -1012,7 +1014,7 @@ def filter_by_feature(brkpts, query_region, keep_intron_vars):
         span_filter = True
     else:
       span_filter = True
-  return in_filter, span_filter
+    return in_filter, span_filter
 
 
 def check_intervals(breakpts, query_region):

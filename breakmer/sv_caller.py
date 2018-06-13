@@ -52,7 +52,7 @@ class sv_event(object):
 
   def add(self, br):
     self.blat_res.append((br.get_coords('query')[0],br))
-    for i in range(br.get_coords('query')[0], br.get_coords('query')[1]): 
+    for i in range(br.get_coords('query')[0], br.get_coords('query')[1]):
       #print 'incrementing query cov', i, self.query_cov, len(self.query_cov), br.get_coords('query')
       self.query_cov[i] += 1
     if not self.query_size:
@@ -63,7 +63,7 @@ class sv_event(object):
     self.in_rep = self.in_rep and (br.repeat_overlap > 75.0)
     self.valid = self.valid and br.valid
     self.br_sorted.append((br,br.get_nmatch_total()))
-  
+
 
   def check_previous_add(self, br):
 #    print 'Checking previous br add'
@@ -75,7 +75,7 @@ class sv_event(object):
     if ncoords[0] == prev_coords[0] and ncoords[1] == prev_coords[1]:
 #      print 'Coords match'
       n_nmatch = br.get_nmatch_total()
-      if abs(prev_nmatch-n_nmatch) < 10: 
+      if abs(prev_nmatch-n_nmatch) < 10:
 #        print 'score different is less than 10'
 #        print 'prev br', prev_br, prev_br.in_target
 #        print 'new br', br, br.in_target
@@ -90,15 +90,15 @@ class sv_event(object):
 #    if self.homology['non'][0] and self.homology['in'][0]:
 #      if self.homology['non'][2] == self.homology['in'][1]:
 #          print 'Swap brs', br, self.br_sorted[-1], self.blat_res[-1] #self.homology['non'][3], self.homology['non'][1]
-#        self.br_sorted[self.homology['non'][3]] = self.homology['non'][1]  
+#        self.br_sorted[self.homology['non'][3]] = self.homology['non'][1]
 
-  
+
   def set_result_value(self, key, value):
     self.result_values[key] = value
 
   def format_result(self, values):
     res_lst = []
-    if values: 
+    if values:
       for v in values:
         if not isinstance(values[v], list): values[v] = [values[v]]
         self.result_values[v] = ",".join([str(x) for x in values[v]])
@@ -115,12 +115,12 @@ class sv_event(object):
       chrom,locs = bp.split(':')
       chrom = chrom.replace('chr','')
       ll = locs.split('-')
-      if len(ll) > 1: 
+      if len(ll) > 1:
         brkpts.append((chrom,int(ll[0]),int(ll[0])+1))
         brkpts.append((chrom,int(ll[1]),int(ll[1])+1))
       else:
         brkpts.append((chrom, int(ll[0]), int(ll[0])+1))
-      
+
     bamfile = pysam.Samfile(self.sample_bam,'rb')
 
     covs = [0]*len(brkpts)
@@ -131,7 +131,7 @@ class sv_event(object):
       areads = bamfile.fetch(str(c), s, e)
 
       for aread in areads:
-        if aread.is_duplicate or aread.is_qcfail or aread.is_unmapped or aread.mapq < 10: 
+        if aread.is_duplicate or aread.is_qcfail or aread.is_unmapped or aread.mapq < 10:
           continue
         cov += 1
       covs[bp_index] = cov
@@ -151,7 +151,7 @@ class sv_event(object):
 
   def get_indel_result(self):
     br = self.blat_res[0][1]
-    self.set_result_value('anno_genes', br.get_gene_anno()) 
+    self.set_result_value('anno_genes', br.get_gene_anno())
     self.set_result_value('repeat_matching', '0.0:'+str(br.get_nmatch_total()))
     self.set_result_value('mismatches', br.get_nmatches('mis'))
     self.set_result_value('strands', br.strand)
@@ -181,13 +181,13 @@ class sv_event(object):
       if br.strand == '-':
         tbrkpt = [ts]
         filt_rep_start = br.filter_reps_edges[0]
-    elif last_iter: 
+    elif last_iter:
       brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][0]
       brkpt_d['q'][1].append([qs,qs-brkpt_d['q'][0][0],qe-qs])
       tbrkpt = [ts]
       filt_rep_start = br.filter_reps_edges[0]
       if br.strand == '-':
-        tbrkpt = [te] 
+        tbrkpt = [te]
         filt_rep_start = br.filter_reps_edges[1]
     else:
       brkpt_d['q'][1][-1][2] = qe - brkpt_d['q'][1][-1][1]
@@ -209,7 +209,7 @@ class sv_event(object):
   def get_svs_result(self, query_region, params, disc_reads):
     utils.log(self.logging_name, 'info', 'Resolving SVs call from blat results')
     blat_res = self.blat_res
-    blat_res_sorted = sorted(blat_res, key=lambda blat_res: blat_res[0]) 
+    blat_res_sorted = sorted(blat_res, key=lambda blat_res: blat_res[0])
     brkpts = {'t':{'in_target':None, 'other':None }, 'formatted':[], 'r':[], 'q': [[0,0],[]], 'chrs':[], 'brkpt_str':[], 'tcoords':[], 'f':[]}
     res_values = {'target_breakpoints':[], 'align_cigar':[], 'sv_type':'', 'strands':[], 'mismatches':[], 'repeat_matching':[], 'anno_genes':[], 'disc_read_count':0 }
     br_valid = [True, True]
@@ -229,9 +229,9 @@ class sv_event(object):
 
     result = None
     self.br_sorted = sorted(self.br_sorted, key=lambda br: br[1])
-    if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']): 
-      brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'rearr') 
-      rearr_type, disc_read_support = self.define_rearr(brkpts['r'], res_values['strands'], brkpts['tcoords'], disc_reads) 
+    if not self.multiple_genes(brkpts['chrs'], brkpts['r'], res_values['anno_genes']):
+      brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'rearr')
+      rearr_type, disc_read_support = self.define_rearr(brkpts['r'], res_values['strands'], brkpts['tcoords'], disc_reads)
       if not self.filter_rearr(query_region, params, brkpts['r'], brkpt_counts, brkpt_kmers, rearr_type, disc_read_support):
         res_values['sv_type'] = 'rearrangement'
         if rearr_type != 'rearrangement':
@@ -242,9 +242,9 @@ class sv_event(object):
         res_values['split_read_count'] = brkpt_counts['b']
         result = self.format_result(res_values)
     elif max(self.contig_rcounts.others) >= params.get_param('trl_sr_thresh'):
-      brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'trl') 
+      brkpt_counts, brkpt_kmers, brkpt_rep_filt = self.get_brkpt_counts_filt(brkpts, 'trl')
       disc_read_count = self.check_disc_reads(brkpts['t'], query_region, disc_reads['disc'])
-      if not self.filter_trl(br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt): 
+      if not self.filter_trl(br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt):
         res_values['disc_read_count'] = disc_read_count
         res_values['sv_type'] = ['trl']
         res_values['target_breakpoints'] = brkpts['brkpt_str']
@@ -254,8 +254,8 @@ class sv_event(object):
 
   def get_brkpt_counts_filt(self, brkpts, sv_type):
 #    print 'Contig seq', self.contig_seq
-#    print 'Breakpoint simple repeat filter', brkpts['f'] 
-    avg_comp, comp_vec = utils.calc_contig_complexity(self.contig_seq) 
+#    print 'Breakpoint simple repeat filter', brkpts['f']
+    avg_comp, comp_vec = utils.calc_contig_complexity(self.contig_seq)
 #    print 'Contig avg complexity', avg_comp
 #    print 'Contig complexity vec', comp_vec
     brkpt_rep_filt = False
@@ -283,7 +283,7 @@ class sv_event(object):
     return brkpt_counts, brkpt_kmers, brkpt_rep_filt
 
   def call_rearr(self):
-      rearr_type, disc_read_support = self.define_rearr(brkpts['r'], res_values['strands'], brkpts['tcoords'], disc_reads) 
+      rearr_type, disc_read_support = self.define_rearr(brkpts['r'], res_values['strands'], brkpts['tcoords'], disc_reads)
       if not self.filter_rearr(query_region, params, brkpts['r'], brkpt_counts, brkpt_kmers, rearr_type, disc_read_support):
         res_values['sv_type'] = 'rearrangement'
         if rearr_type != 'rearrangement': res_values['sv_subtype'] = rearr_type
@@ -295,7 +295,7 @@ class sv_event(object):
 
   def call_trl(self):
       disc_read_count = self.check_disc_reads(brkpts['t'], query_region, disc_reads['disc'])
-      if not self.filter_trl(br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt): 
+      if not self.filter_trl(br_valid, query_region, params, brkpt_counts, brkpt_kmers, disc_read_count, res_values['anno_genes'], max_repeat, brkpt_rep_filt):
         res_values['disc_read_count'] = disc_read_count
         res_values['sv_type'] = ['trl']
         res_values['target_breakpoints'] = brkpts['brkpt_str']
@@ -308,7 +308,7 @@ class sv_event(object):
       contained = True
     elif coord2[0] >= coord1[0] and coord2[1] <= coord1[1]:
       contained = True
-    return contained 
+    return contained
 
   def define_rearr(self, brkpts, strands, tcoords, disc_reads):
     type = 'rearrangement'
@@ -330,19 +330,19 @@ class sv_event(object):
                 rs += 1
             else:
               if (r1p <= brkpts[1] and r1p >= brkpts[0]) and r2p >= brkpts[1]:
-                rs += 1 
+                rs += 1
         elif (strands[0] == "+" and strands[1] == "+") and (brkpts[0] > brkpts[1]):
           utils.log(self.logging_name, 'debug', 'HIT TANDEM DUP')
           hit = True
           type = 'tandem_dup'
           # Tandem dup
           for read_pair in disc_reads['td']:
-            r1p, r2p, r1s, r2s, qname = read_pair 
+            r1p, r2p, r1s, r2s, qname = read_pair
             if (r1p <= brkpts[0] and r1p >= brkpts[1]) and (): rs += 1
     if not hit:
       utils.log(self.logging_name, 'debug', 'Not inversion or tandem dup, checking for odd read pairs around breakpoints')
       rs = [0] * len(brkpts)
-      for i in range(len(brkpts)): 
+      for i in range(len(brkpts)):
         b = brkpts[i]
         for read_pair in disc_reads['other']:
           r1p, r2p, r1s, r2s, qname = read_pair
@@ -350,7 +350,7 @@ class sv_event(object):
             utils.log(self.logging_name, 'debug', 'Adding read support from read %s, with strands %d, %d and positions %d, %d for breakpoint at %d' % (qname, r1s, r2s, r1p, r2p, b))
             rs[i] += 1
       rs = max(rs)
-    return type, rs   
+    return type, rs
 
   def filter_rearr(self, query_region, params, brkpts, brkpt_counts, brkpt_kmers, rearr_type, disc_read_count):
     print 'Breakpoint counts', brkpt_counts
@@ -373,7 +373,7 @@ class sv_event(object):
     utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(brkpt_kmers))
     utils.log(self.logging_name, 'debug', 'The maximum repeat overlap by a blat result: %f' % max_repeat)
     if not filter:
-      utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d'%(filter, disc_read_count)) 
+      utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d'%(filter, disc_read_count))
       if disc_read_count < 2:
 #        print 'Filter due to repeat', rep_filt
         if (self.br_sorted[0][1] < params.get_param('trl_min_seg_len')) or (min(brkpt_counts['n']) < params.get_param('trl_sr_thresh')) or (min(brkpt_kmers)==0) or rep_filt:
@@ -381,7 +381,7 @@ class sv_event(object):
           utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(brkpt_counts['n']),params.get_param('trl_sr_thresh')))
           utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(brkpt_kmers))
           filter = True
-        elif disc_read_count == 0: 
+        elif disc_read_count == 0:
           # Check a number of metrics for shortest blat segment
           br_qs = self.br_sorted[0][0].qstart()
           br_qe = self.br_sorted[0][0].qend()
@@ -398,9 +398,9 @@ class sv_event(object):
           utils.log(self.logging_name, 'debug', 'Discordant read count of 0 checks %s' % (",".join([str(x) for x in check_values])))
           num_checks = 0
           for check in check_values:
-            if check: 
+            if check:
               num_checks += 1
-          if num_checks > 1: 
+          if num_checks > 1:
             utils.log(self.logging_name, 'info', 'Two or more filter checks, setting filtering to true for contig')
             filter = True
     return filter
@@ -420,7 +420,7 @@ class sv_event(object):
     same_strand = False
     strands = []
     for read in self.contig_reads:
-      strand = read.id.split("/")[1] 
+      strand = read.id.split("/")[1]
       strands.append(strand)
     if len(set(strands)) == 1:
       same_strand = True
@@ -449,7 +449,7 @@ class sv_event(object):
     for i in reversed(self.query_cov):
       if i == 0:
         missing_cov += 1
-      else: 
+      else:
         break
 
     perc_missing = round((float(missing_cov)/float(len(self.contig_seq)))*100, 4)
@@ -462,7 +462,7 @@ class sv_event(object):
     '''
 
     mult_genes = True
-    if len(set(anno_genes)) == 1: 
+    if len(set(anno_genes)) == 1:
       utils.log(self.logging_name, 'debug', 'One annotated gene among SVs breakpoints: %s' % ",".join(anno_genes))
       mult_genes = False
     elif self.dup_gene_names(anno_genes) and len(set(chrs)) == 1 and ((max(brkpts) - min(brkpts)) < 10000 ):
@@ -478,7 +478,7 @@ class sv_event(object):
       for g2 in anno_genes[(i+1):]:
         if (g1.find(g2) > -1) or (g2.find(g1) > -1):
           found_dup = True
-    return found_dup 
+    return found_dup
 
   def check_disc_reads(self, brkpts, query_region, disc_reads ):
     disc_read_count = 0
@@ -487,7 +487,7 @@ class sv_event(object):
         d1 = abs(p1 - brkpts['in_target'][1])
         d2 = abs(p2 - brkpts['other'][1])
         if d1 <= 1000 and d2 <= 1000: disc_read_count += 1
-    return disc_read_count 
+    return disc_read_count
 
 
 class blat_manager(object):
@@ -532,7 +532,7 @@ class blat_manager(object):
 #      nhits = 0
 #      for i in qcov:
 #        if i>0: nhits += 1
-#      total_query_cov = round((float(nhits)/float(self.qsize))*100,2) 
+#      total_query_cov = round((float(nhits)/float(self.qsize))*100,2)
 #      mult_res2 = total_query_cov >= 95.0
 #    sys.exit()
     utils.log(self.logging_name, 'debug', 'Checking if query is a target hit or not %r' % indel_hit)
@@ -570,7 +570,7 @@ class blat_manager(object):
         for i in range(br.qstart(), br.qend()):
           self.hit_freq[i] += 1
       qres_f.close()
-    self.blat_results = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], -blat_results[4], blat_results[1]) ) 
+    self.blat_results = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], -blat_results[4], blat_results[1]) )
 
   def write_mod_result_file(self, fn):
     blat_ff = open(fn,'w')
@@ -594,11 +594,11 @@ class blat_manager(object):
     '''
 
     indel = False
-    indel_size_thresh = int(self.meta_dict['params'].opts['indel_size']) 
+    indel_size_thresh = int(self.meta_dict['params'].opts['indel_size'])
     utils.log(self.logging_name, 'info', 'Checking if blat result contains an indel variant')
     nhits = 0
     for i in self.hit_freq:
-      if i > 0: nhits += 1  
+      if i > 0: nhits += 1
     if br.spans_query() or (len(self.blat_results) == 1 and br.in_target):
       utils.log(self.logging_name, 'info', 'Blat result spans query (%r) or only one blat result (%r) and blat result in target (%r)'%(br.spans_query(), (len(self.blat_results) == 1), br.in_target))
       indel = True
@@ -610,17 +610,17 @@ class blat_manager(object):
         flank_match_thresh = True
         for fm in br.indel_flank_match:
           fm_perc = round((float(fm)/float(br.get_size('query')))*100,2)
-          if fm_perc < 10.0: 
+          if fm_perc < 10.0:
             flank_match_thresh = False
-          utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d of query)'%(fm,fm_perc))
+          utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d \% of query)'%(fm,fm_perc))
         utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)'%flank_match_thresh)
         in_ff, span_ff = utils.filter_by_feature(br.get_brkpt_locs(), self.meta_dict['query_region'], self.meta_dict['params'].opts['keep_intron_vars'])
         if not in_ff and not low_cov and flank_match_thresh:
           self.se = sv_event(br, self.meta_dict['query_region'], self.meta_dict['contig_vals'], self.meta_dict['sbam'])
           utils.log(self.logging_name, 'debug', 'Top hit contains whole query sequence, indel variant')
-        else: 
+        else:
           utils.log(self.logging_name, 'debug', 'Indel in intron (%r) or low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (in_ff, low_cov, min(br.query_blocksizes)) )
-      else: 
+      else:
         utils.log(self.logging_name, 'debug', 'Indel failed checking criteria: in annotated gene: %r, mean query coverage < 2: %r, in target: %r, in repeat: %r, indel size < %d: %r' % (br.valid, br.mean_cov, br.in_target, ",".join([str(x) for x in br.rep_man.breakpoint_in_rep]), indel_size_thresh, br.indel_maxevent_size[0] < indel_size_thresh))
     return indel
 
@@ -632,7 +632,7 @@ class blat_manager(object):
 
   def get_svs_result(self):
     if self.se:
-      return self.se.get_svs_result(self.meta_dict['query_region'], self.meta_dict['params'], self.meta_dict['disc_reads']) 
+      return self.se.get_svs_result(self.meta_dict['query_region'], self.meta_dict['params'], self.meta_dict['disc_reads'])
     else:
       return None
 
@@ -642,18 +642,18 @@ class blat_manager(object):
     '''
 
     has_indel = False
-#    blat_results_sorted = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], blat_results[1]) ) 
+#    blat_results_sorted = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], blat_results[1]) )
     for i in range(len(self.blat_results)): #blat_results_sorted)):
       nmatch, ngaps, in_target, br, perc_ident = self.blat_results[i] #blat_results_sorted[i]
       br.mean_cov = self.get_mean_cov(br.qstart(), br.qend())
       #keep_clipped = (mean_cov<4 and ((br.get_nmatch_total()<30 and not br.in_repeat) or br.get_nmatch_total()>=30))
       #keep_clipped = keep_clipped or (br.in_target and mean_cov<10)
       #print nmatch, ngaps, br.mean_cov
-      if i==0 and self.check_blat_indel(br): 
+      if i==0 and self.check_blat_indel(br):
         has_indel = True
         utils.log(self.logging_name, 'info', 'Contig has indel, returning %r'%has_indel)
-        return has_indel 
-      else: #if keep_clipped: 
+        return has_indel
+      else: #if keep_clipped:
         utils.log(self.logging_name, 'debug', 'Storing clipped blat result start %d, end %d'%(br.qstart(), br.qend()))
         self.clipped_qs.append((br.qstart(),br.qend(),br,i))
     utils.log(self.logging_name, 'info', 'Contig does not have indel, return %r'%has_indel)
@@ -693,7 +693,7 @@ class blat_manager(object):
     if self.se is not None and (len(self.se.blat_res) > 1) and self.se.in_target:
       nmissing_query_cov = len(filter(lambda y: y, map(lambda x: x==0, self.se.query_cov)))
       print 'Missing query cov', nmissing_query_cov, self.meta_dict['params'].get_param('trl_minseg_len')
-      if nmissing_query_cov < self.meta_dict['params'].get_param('trl_minseg_len'): 
+      if nmissing_query_cov < self.meta_dict['params'].get_param('trl_minseg_len'):
         valid = True
     return valid
 
@@ -710,7 +710,7 @@ class blat_manager(object):
     utils.log(self.logging_name, 'debug', 'Blat query segment overlaps gap by %f' % over_perc)
     utils.log(self.logging_name, 'debug', 'Max segment overlap %f' % max_seg_overlap)
     utils.log(self.logging_name, 'debug', 'Event in target %r and blat result in target %r' % (self.se.in_target, br.in_target))
-    if over_perc >= 50 and (max_seg_overlap < 15 or (br.in_target and self.se.in_target) ): # and (self.se.in_target or br.in_target): 
+    if over_perc >= 50 and (max_seg_overlap < 15 or (br.in_target and self.se.in_target) ): # and (self.se.in_target or br.in_target):
       add = True
     utils.log(self.logging_name, 'debug', 'Add blat result to SV event %r' % add)
     return add
@@ -733,13 +733,13 @@ class blat_manager(object):
       if startWithinGap or endWithinGap or (gapEdgeDistStart and (endWithinGap or gapEdgeDistEnd)) or (gapEdgeDistEnd and (startWithinGap or gapEdgeDistStart)):
       # if (qs >= gs and qs <= ge) or (qe <= ge and qe >= gs):
         ngap = []
-        if qs > gs: 
-          if (qs-1-gs) > 10: 
+        if qs > gs:
+          if (qs-1-gs) > 10:
             ngap.append((gs,qs-1))
-        if qe < ge: 
+        if qe < ge:
           if (ge-qe+1) > 10:
             ngap.append((qe+1,ge))
-        if iter == 0: 
+        if iter == 0:
           utils.log(self.logging_name, 'debug', 'Creating SV event from blat result with start %d, end %d'%(qs, qe))
           self.se = sv_event(br, self.meta_dict['query_region'], self.meta_dict['contig_vals'], self.meta_dict['sbam'])
           new_gaps.extend(ngap)
@@ -771,12 +771,12 @@ class align_manager:
     self.result = None
     self.bm = blat_manager(meta_dict)
 
-  
+
   def check_target_results(self):
     hit = False
     self.logger.info('Checking if target blat contains most of query or if whole genome needs to queried.')
-     
-    if not self.bm.has_blat_results: 
+
+    if not self.bm.has_blat_results:
       self.query_res_fn = None
       hit = True
     else:
@@ -806,7 +806,7 @@ class align_manager:
     print 'get_result()'
     if 'contig_vals' in self.meta_dict:
       contig_id = self.meta_dict['contig_vals'][2]
-    if not self.bm.has_blat_results: 
+    if not self.bm.has_blat_results:
       self.logger.info('No blat results file %s, no calls for %s.'%(self.query_res_fn, contig_id))
     else:
       print 'checking results'
@@ -815,7 +815,7 @@ class align_manager:
         self.result = self.bm.get_indel_result()
       elif self.bm.check_svs():
         print 'checking svs'
-        self.result = self.bm.get_svs_result() 
+        self.result = self.bm.get_svs_result()
     return self.result
 
 
@@ -845,7 +845,7 @@ class blat_repeat_manager:
         rep_overlap += float(min(rbp2,end)-max(rbp1,start))
         rep_coords.append((rbp1,rbp2))
         # Simple or low complexity seq repeat for filtering
-        if rname.find(")n") > -1 or rname.find("_rich") > -1: 
+        if rname.find(")n") > -1 or rname.find("_rich") > -1:
           simple_overlap += float(min(rbp2,end)-max(rbp1,start))
           if (rbp1<=start and rbp2>=start): filter_reps_edges[0] = True
           elif (rbp1<=end and rbp2>=end): filter_reps_edges[1] = True
@@ -917,7 +917,7 @@ class blat_res(object):
     self.gaps['query'] = [int(self.blat_values[4]),int(self.blat_values[5])]
 
     tname = self.blat_values[13].replace('chr','')
-    if 'tname' in d: 
+    if 'tname' in d:
       tname = d['tname']
       self.blat_values[13] = tname
 
@@ -939,7 +939,7 @@ class blat_res(object):
     self.fragments['hit'] = []
     self.fragments['query'] = []
     for qstart,tstart,blocksize in zip(qstarts, tstarts, self.query_blocksizes):
-      self.fragments['hit'].append((tstart,tstart+blocksize)) 
+      self.fragments['hit'].append((tstart,tstart+blocksize))
       self.fragments['query'].append((qstart,qstart+blocksize))
     self.fragments['count'] = len(self.query_blocksizes)
 
@@ -952,7 +952,7 @@ class blat_res(object):
 
     if 'params' in d:
       self.set_gene_anno(d['params'].gene_annotations, d['query_region'])
-    #   if 'repeat_mask' in d: 
+    #   if 'repeat_mask' in d:
     #     self.set_repeat(d['repeat_mask'],d['params'].repeat_mask)
 
 #    if 'gene_anno' in d: self.set_gene_anno(d['gene_anno'], d['query_region'])
@@ -978,24 +978,24 @@ class blat_res(object):
 
   def set_segment_overlap(self, right, left):
     self.seg_overlap = [left, right]
-      
+
   def set_repeat(self, target_rep_mask, all_rep_mask):
     self.rep_man = blat_repeat_manager()
-    if self.matches['rep'] > 0: 
+    if self.matches['rep'] > 0:
       self.in_repeat = True
     if target_rep_mask and all_rep_mask:
       # Check rep_mask if it exists.
       rmask = target_rep_mask
-      if not self.in_target: 
+      if not self.in_target:
         rmask = None
-        if self.vals['hit']['name'] in all_rep_mask: 
+        if self.vals['hit']['name'] in all_rep_mask:
           rmask = all_rep_mask[self.vals['hit']['name']]
       if rmask:
-        self.rep_man.setup(self.get_coords('hit'), rmask) 
-        self.in_repeat, self.repeat_overlap, self.repeat_coords, self.filter_reps_edges = self.rep_man.other_values 
+        self.rep_man.setup(self.get_coords('hit'), rmask)
+        self.in_repeat, self.repeat_overlap, self.repeat_coords, self.filter_reps_edges = self.rep_man.other_values
 
   def get_coords(self,type): return self.vals[type]['coords']
-  
+
   def qstart(self): return self.get_coords('query')[0]
 
   def qend(self): return self.get_coords('query')[1]
@@ -1003,19 +1003,19 @@ class blat_res(object):
   def tstart(self): return self.get_coords('hit')[0]
 
   def tend(self): return self.get_coords('hit')[1]
-  
+
   def get_name(self,type): return self.vals[type]['name']
-  
+
   def get_size(self,type): return self.vals[type]['size']
 
-  def get_query_span(self): 
+  def get_query_span(self):
     return self.get_coords('query')[1] - self.get_coords('query')[0]
 
-  def get_query_coverage(self): 
-    return round((float(self.get_query_span())/float(self.get_size('query')))*100,2) 
+  def get_query_coverage(self):
+    return round((float(self.get_query_span())/float(self.get_size('query')))*100,2)
 
   def spans_query(self):
-    return self.get_size('query') == (self.get_coords('query')[1]- self.get_coords('query')[0]) 
+    return self.get_size('query') == (self.get_coords('query')[1]- self.get_coords('query')[0])
 
   def get_ngap_total(self):
     return self.gaps['hit'][1] + self.gaps['query'][1]
@@ -1031,7 +1031,7 @@ class blat_res(object):
   def sum_indel_flank_matches(self,flank_str):
     m_indxs = []
     match_sum = 0
-    for i in range(len(flank_str)):  
+    for i in range(len(flank_str)):
       if flank_str[i] == "M": m_indxs.append(i)
     for indx in m_indxs:
       nmatch = ''
@@ -1053,7 +1053,7 @@ class blat_res(object):
   def set_indel_locs(self):
     chrm = 'chr'+str(self.get_name('hit'))
     for i in range(self.fragments['count']-1):
-      if i==0 and self.fragments['query'][i][0] > 0: 
+      if i==0 and self.fragments['query'][i][0] > 0:
         self.cigar = str(self.fragments['query'][i][0]) + "S"
       qend1 = int(self.fragments['query'][i][1])
       qstart2 = int(self.fragments['query'][i+1][0])
@@ -1077,20 +1077,20 @@ class blat_res(object):
         self.add_query_brkpt(qend1)
         self.cigar += str(del_bp) + "D"
         if del_bp > self.indel_maxevent_size[0]: self.indel_maxevent_size = [del_bp,"D"]
-      
+
     self.cigar += str(self.query_blocksizes[-1]) + "M"
-    end_clipped = self.get_size('query') - self.get_coords('query')[1] 
-    if end_clipped > 0: 
+    end_clipped = self.get_size('query') - self.get_coords('query')[1]
+    if end_clipped > 0:
       self.cigar += str(end_clipped) + "S"
 
     self.set_indel_flank_matches()
 
     if self.strand == "-":
       for i in range(len(self.query_brkpts)):
-        self.query_brkpts[i] = self.get_size('query') - self.query_brkpts[i]  
+        self.query_brkpts[i] = self.get_size('query') - self.query_brkpts[i]
 
   def add_query_brkpt(self, brkpt):
-    if brkpt not in self.query_brkpts: 
+    if brkpt not in self.query_brkpts:
       self.query_brkpts.append(brkpt)
 
   def get_brkpt_str(self, with_sizes=False):
@@ -1098,16 +1098,16 @@ class blat_res(object):
     bp_str = []
     chrm = 'chr' + str(self.get_name('hit'))
     if len(self.breakpts) > 0:
-      for b,s in zip(self.breakpts, self.indel_sizes): 
+      for b,s in zip(self.breakpts, self.indel_sizes):
         if len(b) > 1: bb = "-".join([str(x) for x in b])
         else: bb = str(b[0])
         bstr = chrm + ":" + bb
-        if with_sizes: 
+        if with_sizes:
           bstr += " " + "(" + s + ")"
         bp_str.append(bstr)
       brkpt_out.append(",".join(bp_str))
     return ",".join(brkpt_out)
-  
+
   def get_brkpt_locs(self):
     brkpt_locs = []
     for b in self.breakpts:
