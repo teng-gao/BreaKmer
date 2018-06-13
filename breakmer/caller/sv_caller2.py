@@ -77,7 +77,7 @@ class SVCallManager(object):
 #         '''
 
 #         contig_id = None
-#         if not realignment_result_set.has_results: 
+#         if not realignment_result_set.has_results:
 #             utils.log(self.logging_name, 'info', 'No blat results file %s, no calls for %s.' % (self.query_res_fn, contig_id))
 #         else:
 #             print 'checking results'
@@ -85,7 +85,7 @@ class SVCallManager(object):
 #             if realignment_result_set.has_indel():
 #                 sv_event = realignment_result_set.get_indel_result()
 #             elif realignment_result_set.check_svs():
-#                 sv_event = self.bm.get_svs_result() 
+#                 sv_event = self.bm.get_svs_result()
 #         return self.result
 
 class FilterManager(object):
@@ -130,11 +130,11 @@ class FilterManager(object):
         flank_match_thresh = True
         for flank_match in indel_segment.indel_flank_match:
             fm_perc = round((float(flank_match)/float(indel_segment.get_size('query')))*100, 2)
-            if fm_perc < 10.0: 
+            if fm_perc < 10.0:
                 flank_match_thresh = False
-            utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d of query)'%(flank_match, fm_perc))
+            utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d%% of query)'%(flank_match, fm_perc))
 
-        utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)' % flank_match_thresh)
+        utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 %% of query) on both sides (%r)' % flank_match_thresh)
         in_ff, span_ff = utils.filter_by_feature(indel_segment.get_brkpt_locs(), sv_result.query_region, self.params.get_param('keep_intron_vars'))
 
         brkpt_cov = [sv_result.contig.get_contig_counts().get_counts(x, x, 'indel') for x in indel_segment.query_brkpts]
@@ -213,7 +213,7 @@ class FilterManager(object):
         utils.log(self.logging_name, 'debug', 'The maximum repeat overlap by a blat result: %f' % max_repeat)
 
         if not filter_result:
-            utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d' % (filter_result, sv_result.values['disc_read_count'])) 
+            utils.log(self.logging_name, 'debug', 'Filter %r, checking discordant read counts %d' % (filter_result, sv_result.values['disc_read_count']))
             if sv_result.values['disc_read_count'] < 2:
                 match_sorted_realignments = sorted(sv_result.sv_event.realignments, key=lambda x: x.get_nmatch_total())
                 top_realigned_segment = match_sorted_realignments[0]
@@ -222,7 +222,7 @@ class FilterManager(object):
                     utils.log(self.logging_name, 'debug', 'The minimum read count support for breakpoints %d meets split read threshold %d'%(min(sv_result.breakpoint_values['counts']['n']), self.params.get_param('trl_sr_thresh')))
                     utils.log(self.logging_name, 'debug', 'The minimum number of kmers at breakpoints %d' % min(sv_result.breakpoint_values['kmers']))
                     filter_result = True
-                elif sv_result.values['disc_read_count'] == 0: 
+                elif sv_result.values['disc_read_count'] == 0:
                     # Check a number of metrics for shortest blat segment
                     br_qs = top_realigned_segment.qstart()
                     br_qe = top_realigned_segment.qend()
@@ -239,9 +239,9 @@ class FilterManager(object):
                     utils.log(self.logging_name, 'debug', 'Discordant read count of 0 checks %s' % (",".join([str(x) for x in check_values])))
                     num_checks = 0
                     for check in check_values:
-                        if check: 
+                        if check:
                             num_checks += 1
-                    if num_checks > 1: 
+                    if num_checks > 1:
                         utils.log(self.logging_name, 'info', 'Two or more filter checks, setting filtering to true for contig')
                         filter_result = True
         return filter_result
@@ -261,7 +261,7 @@ class FilterManager(object):
         for i in reversed(sv_result.query_cov):
           if i == 0:
             missing_cov += 1
-          else: 
+          else:
             break
 
         perc_missing = round((float(missing_cov)/float(len(sv_result.contig.seq.value)))*100, 4)
@@ -276,7 +276,7 @@ class FilterManager(object):
         same_strand = False
         strands = []
         for read in sv_result.contig.reads:
-            strand = read.id.split("/")[1] 
+            strand = read.id.split("/")[1]
             strands.append(strand)
         if len(set(strands)) == 1:
             same_strand = True
