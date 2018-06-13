@@ -456,7 +456,6 @@ class RealignResultSet(object):
         '''
 
         blat_ff = open(filename, 'w')
-        pdb.set_trace()
         for realignment in self.realignments:
             blat_ff.write(realignment.get_blat_output() + '\n')
         blat_ff.close()

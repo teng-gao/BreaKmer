@@ -34,7 +34,7 @@ class SVCallManager(object):
 
         '''
         '''
-
+        pdb.set_trace()
         sv_results = []
         for assembled_contig in contigs:
             utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
