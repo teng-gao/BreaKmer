@@ -619,7 +619,6 @@ class blat_manager(object):
           self.se = sv_event(br, self.meta_dict['query_region'], self.meta_dict['contig_vals'], self.meta_dict['sbam'])
           utils.log(self.logging_name, 'debug', 'Top hit contains whole query sequence, indel variant')
         else:
-          print("BOOM")
           utils.log(self.logging_name, 'debug', 'Indel in intron (%r) or low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (in_ff, low_cov, min(br.query_blocksizes)) )
       else:
         utils.log(self.logging_name, 'debug', 'Indel failed checking criteria: in annotated gene: %r, mean query coverage < 2: %r, in target: %r, in repeat: %r, indel size < %d: %r' % (br.valid, br.mean_cov, br.in_target, ",".join([str(x) for x in br.rep_man.breakpoint_in_rep]), indel_size_thresh, br.indel_maxevent_size[0] < indel_size_thresh))
@@ -774,6 +773,7 @@ class align_manager:
 
   def check_target_results(self):
     hit = False
+    self.logger.info("BOOM")
     self.logger.info('Checking if target blat contains most of query or if whole genome needs to queried.')
 
     if not self.bm.has_blat_results:
