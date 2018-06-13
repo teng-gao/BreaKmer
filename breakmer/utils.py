@@ -1003,7 +1003,7 @@ def filter_by_feature(brkpts, query_region, keep_intron_vars):
     in_filter = False
     span_filter = False
     if not keep_intron_vars:
-    in_vals, span_vals = check_intervals(brkpts, query_region)
+        in_vals, span_vals = check_intervals(brkpts, query_region)
     if in_vals[0]:
       if 'exon' not in in_vals[1]:
         in_filter = True
