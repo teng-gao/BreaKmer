@@ -773,7 +773,6 @@ class align_manager:
 
   def check_target_results(self):
     hit = False
-    self.logger.info("BOOM")
     self.logger.info('Checking if target blat contains most of query or if whole genome needs to queried.')
 
     if not self.bm.has_blat_results:
