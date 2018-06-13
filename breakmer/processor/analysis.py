@@ -165,7 +165,6 @@ class RunTracker(object):
             utils.log(self.logging_name, 'info', 'Stopping blat server on port %d' % self.params.get_param('blat_port'))
             gfserver_stop_cmd = '%s stop localhost %d' % (self.params.get_param('gfserver'), self.params.get_param('blat_port'))
             os.system(gfserver_stop_cmd)
-        print 'BOOM'
         print 'Analysis complete.'
 
     def write_output(self):
