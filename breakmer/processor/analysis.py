@@ -13,6 +13,7 @@ import multiprocessing
 from itertools import izip, repeat
 import breakmer.processor.target as target
 import breakmer.utils as utils
+import pdb
 
 
 __author__ = "Ryan Abo"
@@ -139,6 +140,8 @@ class RunTracker(object):
             # Write reference sequence fasta for gene if it doesn't exist.
             # if not self.params.opts['preset_ref_data']:
             trgt.set_ref_data()
+
+            pdb.set_trace()
 
             if not trgt.get_sv_reads():
                 continue
