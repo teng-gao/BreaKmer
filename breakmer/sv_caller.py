@@ -593,7 +593,6 @@ class blat_manager(object):
 
     '''
     '''
-    pdb.set_trace()
     indel = False
     indel_size_thresh = int(self.meta_dict['params'].opts['indel_size'])
     utils.log(self.logging_name, 'info', 'Checking if blat result contains an indel variant')
@@ -613,7 +612,7 @@ class blat_manager(object):
           fm_perc = round((float(fm)/float(br.get_size('query')))*100,2)
           if fm_perc < 10.0:
             flank_match_thresh = False
-          utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d \% of query)'%(fm,fm_perc))
+          utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d %% of query)'%(fm,fm_perc))
         utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)'%flank_match_thresh)
         in_ff, span_ff = utils.filter_by_feature(br.get_brkpt_locs(), self.meta_dict['query_region'], self.meta_dict['params'].opts['keep_intron_vars'])
         if not in_ff and not low_cov and flank_match_thresh:
@@ -780,6 +779,7 @@ class align_manager:
       self.query_res_fn = None
       hit = True
     else:
+      pdb.set_trace()
       self.bm.write_mod_result_file(self.query_res_fn+'.mod')
       #print 'Checking target results'
       #print len(self.bm.blat_results)
