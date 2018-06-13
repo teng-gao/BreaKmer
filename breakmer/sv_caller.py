@@ -593,7 +593,7 @@ class blat_manager(object):
 
     '''
     '''
-
+    pdb.set_trace()
     indel = False
     indel_size_thresh = int(self.meta_dict['params'].opts['indel_size'])
     utils.log(self.logging_name, 'info', 'Checking if blat result contains an indel variant')
@@ -641,7 +641,6 @@ class blat_manager(object):
 
     '''
     '''
-    pdb.set_trace()
     has_indel = False
 #    blat_results_sorted = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], blat_results[1]) )
     for i in range(len(self.blat_results)): #blat_results_sorted)):
