@@ -604,6 +604,7 @@ class blat_manager(object):
       indel = True
       keep_br = br.valid and br.mean_cov < 2 and br.in_target and (br.indel_maxevent_size[0] >= indel_size_thresh) and (not br.rep_man.breakpoint_in_rep[0] and not br.rep_man.breakpoint_in_rep[1])
       utils.log(self.logging_name, 'debug', 'Keep blat result %r'%keep_br)
+      utils.log(self.logging_name, 'debug', "MONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEY")
       if keep_br:
         brkpt_cov = [self.meta_dict['contig_vals'][1].get_counts(x, x, 'indel') for x in br.query_brkpts]
         low_cov = min(brkpt_cov) < self.meta_dict['params'].get_param('indel_sr_thresh')
@@ -775,7 +776,6 @@ class align_manager:
 
     hit = False
     self.logger.info('Checking if target blat contains most of query or if whole genome needs to queried.')
-    self.logger.info('MONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEYMONEY')
     if not self.bm.has_blat_results:
       self.query_res_fn = None
       hit = True
