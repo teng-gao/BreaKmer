@@ -613,13 +613,13 @@ class blat_manager(object):
           if fm_perc < 10.0:
             flank_match_thresh = False
           utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event of %d (%d percent of query)'%(fm,fm_perc))
-          print("BOOOM")
         utils.log(self.logging_name, 'info', 'Indel result has matching flanking sequence of largest indel event (10 perc of query) on both sides (%r)'%flank_match_thresh)
         in_ff, span_ff = utils.filter_by_feature(br.get_brkpt_locs(), self.meta_dict['query_region'], self.meta_dict['params'].opts['keep_intron_vars'])
         if not in_ff and not low_cov and flank_match_thresh:
           self.se = sv_event(br, self.meta_dict['query_region'], self.meta_dict['contig_vals'], self.meta_dict['sbam'])
           utils.log(self.logging_name, 'debug', 'Top hit contains whole query sequence, indel variant')
         else:
+          print("BOOM")
           utils.log(self.logging_name, 'debug', 'Indel in intron (%r) or low coverage at breakpoints (%r) or minimum segment size < 20 (%r), filtering out.' % (in_ff, low_cov, min(br.query_blocksizes)) )
       else:
         utils.log(self.logging_name, 'debug', 'Indel failed checking criteria: in annotated gene: %r, mean query coverage < 2: %r, in target: %r, in repeat: %r, indel size < %d: %r' % (br.valid, br.mean_cov, br.in_target, ",".join([str(x) for x in br.rep_man.breakpoint_in_rep]), indel_size_thresh, br.indel_maxevent_size[0] < indel_size_thresh))
