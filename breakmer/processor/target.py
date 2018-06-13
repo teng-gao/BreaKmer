@@ -15,6 +15,7 @@ import pysam
 import breakmer.utils as utils
 import breakmer.assembly.assembler as assembler
 import breakmer.caller.sv_caller2 as sv_caller
+import pdb
 
 __author__ = "Ryan Abo"
 __copyright__ = "Copyright 2015, Ryan Abo"
@@ -218,8 +219,6 @@ class TargetManager(object):
         '''
         '''
 
-        pdb.set_trace()
-
         self.extract_bam_reads('sv')
         if 'normal_bam_file' in self.params.opts:
             self.extract_bam_reads('norm')
@@ -246,6 +245,8 @@ class TargetManager(object):
 
         '''
         '''
+
+        pdb.set_trace()
 
         self.setup_read_extraction_files(sample_type)
 
