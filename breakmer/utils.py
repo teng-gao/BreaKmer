@@ -341,6 +341,7 @@ def start_blat_server(params):
     params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%d.log' % params.get_param('blat_port')))
     gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
+    pdb.set_trace()
     print("Command: %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     start_time = time.time()
