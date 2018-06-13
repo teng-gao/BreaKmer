@@ -340,10 +340,8 @@ def start_blat_server(params):
 
     # Start gfServer, change dir to 2bit file, gfServer start localhost 8000 .2bit
     params.set_param('gfserver_log', os.path.join(params.paths['output'], 'gfserver_%d.log' % params.get_param('blat_port')))
-    gfserver_cmd = '%s -canStop -log=%s -stepSize=5 start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), ref_fasta_name + ".2bit")
+    gfserver_cmd = '%s -canStop -log=%s start %s %d %s &' % (params.get_param('gfserver'), params.get_param('gfserver_log'), params.get_param('blat_hostname'), params.get_param('blat_port'), os.path.join(reference_fasta_dir, ref_fasta_name + ".2bit"))
     log(logging_name, 'info', "Starting gfServer %s" % gfserver_cmd)
-    pdb.set_trace()
-    print("Command: %s" % gfserver_cmd)
     gfserver_process = subprocess.Popen(gfserver_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     start_time = time.time()
     gfserver_state = server_ready(params.get_param('gfserver_log'))
@@ -417,7 +415,7 @@ def server_ready(out_file):
         for line in server_file:
             if line.find('Server ready for queries') > -1:
                 ready = 'ready'
-            elif line.find('error:') > -1:
+            elif line.find('error:') > -1 or line.find('abort') > -1:
                 ready = 'error'
     return ready
 
