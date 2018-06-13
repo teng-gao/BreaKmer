@@ -13,6 +13,7 @@ import pysam
 import math
 import logging
 import breakmer.utils as utils
+import pdb
 
 
 __author__ = "Ryan Abo"
@@ -640,7 +641,7 @@ class blat_manager(object):
 
     '''
     '''
-
+    pdb.set_trace()
     has_indel = False
 #    blat_results_sorted = sorted(self.blat_results, key=lambda blat_results: (-blat_results[0], blat_results[1]) )
     for i in range(len(self.blat_results)): #blat_results_sorted)):

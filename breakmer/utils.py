@@ -999,7 +999,6 @@ def count_nmers(seq, N):
 
 
 def filter_by_feature(brkpts, query_region, keep_intron_vars):
-    pdb.set_trace()
     in_filter = False
     span_filter = False
     if not keep_intron_vars:
