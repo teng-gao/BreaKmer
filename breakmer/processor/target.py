@@ -245,7 +245,6 @@ class TargetManager(object):
 
         '''
         '''
-        pdb.set_trace()
         self.setup_read_extraction_files(sample_type)
 
         bam_type = 'sample'
