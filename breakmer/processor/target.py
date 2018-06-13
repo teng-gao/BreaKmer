@@ -392,8 +392,7 @@ class TargetManager(object):
         if sample_type == 'sv':
             sv_bam.close()
             utils.log(self.logging_name, 'info', 'Sorting bam file %s to %s' % (self.files['sv_bam'], self.files['sv_bam_sorted']))
-            pdb.set_trace()
-            pysam.sort(self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
+            pysam.sort("-o", self.files['sv_bam'], self.files['sv_bam_sorted'].replace('.bam', ''))
             utils.log(self.logging_name, 'info', 'Indexing sorted bam file %s' % self.files['sv_bam_sorted'])
             pysam.index(self.files['sv_bam_sorted'])
 
