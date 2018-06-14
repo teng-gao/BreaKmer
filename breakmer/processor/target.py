@@ -572,6 +572,7 @@ class TargetManager(object):
             if target_refseq_fn.find("forward") == -1:
                 direction = "reverse"
             utils.log(self.logging_name, 'info', 'Extracting refseq sequence and writing %s' % target_refseq_fn)
+            pdb.set_trace()
             utils.extract_refseq_fa(self.get_values(), self.paths['ref_data'], self.params.get_param('reference_fasta'), direction, target_refseq_fn, self.params.get_param('buffer_size'))
 
     # def setup_rmask(self,marker_fn):
