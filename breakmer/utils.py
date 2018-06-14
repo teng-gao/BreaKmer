@@ -478,16 +478,19 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
     '''
     '''
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
     logging_name = 'breakmer.utils'
     chrom, start_coord, end_coord, name, intervals = gene_coords
     marker_fn = get_marker_fn(target_fa_fn)
 
     if not os.path.isfile(marker_fn):
-        ref_d = SeqIO.to_dict(SeqIO.parse(ref_fa, 'fasta'))
+        # ref_d = SeqIO.to_dict(SeqIO.parse(ref_fa, 'fasta'))
+        # parse the chromesome fa file instead cuz run out of memory. Quick and dirty fix, need to be unified later
+        ref_d = SeqIO.to_dict(SeqIO.parse('%s/chr%s.fa' % (os.path.split(ref_fa)[0], chrom), 'fasta'))
         seq_str = ''
-        seq = ref_d[chrom].seq[(start_coord - buffer_size):(end_coord + buffer_size)]
+        # seq = ref_d[chrom].seq[(start_coord - buffer_size):(end_coord + buffer_size)]
+        seq = ref_d['chr' + chrom].seq[(start_coord - buffer_size):(end_coord + buffer_size)]
         if direction == "reverse":
             seq_str = str(seq.reverse_complement())
         else:
