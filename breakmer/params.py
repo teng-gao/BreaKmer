@@ -120,7 +120,7 @@ class ParamManager(object):
         It will exit with an error if the configuration file does not have lines in the proper format (i.e., key=value).
         It will also iterate through the command line paramaters and store the keys and values in the opts dictionary.
         A final check is performed for the required parameters depending on the parameters that have been passed.
-        
+
         Args:
             None
         Returns:
@@ -248,10 +248,10 @@ class ParamManager(object):
         four columns (chromosome, start, end, name) with an optional fourth column
         containing a coding feature (i.e., exon or intron). Each row is either a tiled
         region with sequencing coverage or it is just a region to analyze by BreaKmer.
-        
+
         The name can be applied to multiple rows, and if multiple tiled regions are input
         with the same name they are aggregated together under the same key.
-        
+
         Store the target information in the self.target dictionary with the name as the key
         and a list of tuples of interval genomic locations as the values.
 

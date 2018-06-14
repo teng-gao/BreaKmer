@@ -59,7 +59,7 @@ class RealignedSegment(object):
 
         '''
         '''
-        pdb.set_trace()
+        # pdb.set_trace()
         self.matches['match'] = int(self.values[0])
         self.matches['mis'] = int(self.values[1])
         self.matches['rep'] = int(self.values[2])
@@ -70,10 +70,10 @@ class RealignedSegment(object):
         toffset = 0
         if scope == 'target':
             self.values[13] = query_region[0].replace('chr', '')
-            toffset = query_region[1] - int(params.get_param('buffer_size'))
+            toffset = query_region[1] - int(params.get_param('buffer_size')) # 45003745 - 100
         tname = self.values[13]
 
-        tcoords = [toffset + int(self.values[15]), toffset + int(self.values[16])]
+        tcoords = [toffset + int(self.values[15]), toffset + int(self.values[16])] # 45003745 - 100 + q_start/q_end of alignment to B2M ref seq
         self.values[15] = tcoords[0]
         self.values[16] = tcoords[1]
 

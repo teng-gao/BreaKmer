@@ -52,7 +52,7 @@ RUN_PARSER.add_argument('-s', '--start_blat_server', dest='start_blat_server', d
 RUN_PARSER.add_argument('-k', '--keep_blat_server', dest='keep_blat_server', default=False, action='store_true', help='Keep the blat server alive. [default: %(default)s]')
 RUN_PARSER.add_argument('-p', '--port_number', dest='blat_port', default=None, type=int, help='The port number for the blat server. A random port number (8000-9500) will be used if not specified. [default: %(default)s]')
 RUN_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=True, help='The configuration filename that contains additional parameters. [default: %(default)s]')
-RUN_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=100, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
+RUN_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=200, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
 
 # Server parser
 SERVER_PARSER.add_argument('-p', '--port_number', dest='blat_port', default=None, type=int, help='The port number for the blat server. A random port number (8000-9500) will be used if not specified. [default: %(default)s]')
@@ -63,7 +63,7 @@ SERVER_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, req
 REF_PARSER.add_argument('-g', '--gene_list', dest='gene_list', default=None, help='Gene list to consider for analysis. [default: %(default)s]')
 REF_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=True, help='The configuration filename that contains additional parameters. [default: %(default)s]')
 REF_PARSER.add_argument('-n', '--nprocessors', dest='nprocs', default=1, type=int, help='The number of processors to use for analysis. [default: %(default)s]')
-REF_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=100, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
+REF_PARSER.add_argument('-b', '--buffer', dest='buffer_size', default=200, required=False, help='The number of base pairs to buffer a target region, on both sides, to extract aligned reads. [default: %(default)s]')
 
 PROFILE_PARSER.add_argument('-c', '--config', dest='config_fn', default=None, required=False, help='The configuration filename that contains additional parameters. [default: %(default)s]')
 PROFILE_PARSER.add_argument('--bam_file', dest='sample_bam_file', default=None, required=True, help='The bam file to profile. [default: %(default)s]')
