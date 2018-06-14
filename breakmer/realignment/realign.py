@@ -407,7 +407,7 @@ class RealignResultSet(object):
 
         '''
         '''
-
+        pdb.set_trace()
         self.check_results_exist()
         if not self.has_results:
             return
@@ -733,7 +733,9 @@ class RealignManager(object):
         if self.query_res_fn is None:
             utils.log(self.logging_name, 'info', 'No blat results file %s, no calls for %s.' % (self.query_res_fn, contig.contig_id))
             return
+
         self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'target')
+
         if not self.check_target_blat():
             # Blat against whole genome reference fasta
             # for some reason gfClient resets the reference path
