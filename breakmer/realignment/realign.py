@@ -719,6 +719,7 @@ class RealignManager(object):
 
         '''
         '''
+        pdb.set_trace()
 
         if contig.contig_fa_fn is None:
             return
