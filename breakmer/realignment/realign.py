@@ -736,7 +736,9 @@ class RealignManager(object):
         self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'target')
         if not self.check_target_blat():
             # Blat against whole genome reference fasta
-            realign_dict = {'binary': self.params.get_param('gfclient'), 'blat_port': self.params.get_param('blat_port'), 'database': self.params.get_param('reference_fasta_dir')}
+            # for some reason gfClient resets the reference path
+            # realign_dict = {'binary': self.params.get_param('gfclient'), 'blat_port': self.params.get_param('blat_port'), 'database': self.params.get_param('reference_fasta_dir')}
+            realign_dict = {'binary': self.params.get_param('gfclient'), 'blat_port': self.params.get_param('blat_port'), 'database': '/'}
             self.query_res_fn = os.path.join(contig.file_path, 'blat_res.genome.psl')
             utils.run_blat(realign_dict, self.query_res_fn, contig.contig_fa_fn, 'genome')
             self.realign_results = RealignResultSet(self.params, self.query_res_fn, target_region_values, 'genome')

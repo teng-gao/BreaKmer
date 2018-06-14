@@ -39,6 +39,7 @@ class SVCallManager(object):
         for assembled_contig in contigs:
             utils.log(self.logging_name, 'info', 'Assessing contig %s' % assembled_contig.seq.value)
             realignment_set = self.align_manager.realignment(assembled_contig, target_ref_fn, target_region_values)
+            pdb.set_trace()
             sv_result = results.SVResult(self.make_call(assembled_contig, target_region_values, realignment_set), self.params.get_param('sample_bam_file'), assembled_contig, target_region_values, disc_reads)
             if not sv_result.filter:
                 self.filter_manager.filter_result(sv_result)
