@@ -926,6 +926,7 @@ def run_blat(realign_value_dict, result_fn, query_fn, scope):
 
     '''
     '''
+    pdb.set_trace()
 
     logging_name = 'breakmer.utils'
     if not os.path.isfile(result_fn):
