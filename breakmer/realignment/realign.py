@@ -59,7 +59,7 @@ class RealignedSegment(object):
 
         '''
         '''
-
+        pdb.set_trace()
         self.matches['match'] = int(self.values[0])
         self.matches['mis'] = int(self.values[1])
         self.matches['rep'] = int(self.values[2])
@@ -407,7 +407,7 @@ class RealignResultSet(object):
 
         '''
         '''
-        pdb.set_trace()
+        # pdb.set_trace()
         self.check_results_exist()
         if not self.has_results:
             return
