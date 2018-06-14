@@ -478,6 +478,8 @@ def extract_refseq_fa(gene_coords, ref_path, ref_fa, direction, target_fa_fn, bu
     '''
     '''
 
+    pdb.set_trace()
+
     logging_name = 'breakmer.utils'
     chrom, start_coord, end_coord, name, intervals = gene_coords
     marker_fn = get_marker_fn(target_fa_fn)
